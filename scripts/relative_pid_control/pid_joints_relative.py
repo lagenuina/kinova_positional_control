@@ -9,9 +9,21 @@ from kortex_driver.msg import *
 from sensor_msgs.msg import JointState
 import kinova_positional_control.srv as posctrl_srv
 
+def feedback_callback(data):   
+    """
+    Callback function to receive feedback from the Kinova arm.
 
-# Get current relative joint positions
-def feedback_callback(data):
+    This function receives the current absolute joint positions of the Kinova arm and publishes the corresponding
+    relative joint positions. The relative joint positions are calculated as the difference between the current
+    absolute joint positions and the starting absolute joint positions.
+
+    Args:
+        data: A JointState message containing the current absolute joint positions of the Kinova arm.
+
+    Returns:
+        None
+    """
+    
     global current_abs_pos, start_abs_pos, continuous_joint_indices
     global isInitialized, kinovaInitialized
 
@@ -63,10 +75,16 @@ def feedback_callback(data):
         state_5.publish(round(current_rel_pos[4], 4))
         state_6.publish(round(current_rel_pos[5], 4))
         state_7.publish(round(current_rel_pos[6], 4))
- 
     
 # Update joint velocities
 def control_effort_callback_1(data):
+    """
+    Update goal velocity for joint 1.
+
+    Args:
+        data: Float64 message.
+    """
+    
     global goal_vel
     global isInitialized
 
@@ -75,6 +93,13 @@ def control_effort_callback_1(data):
         goal_vel[0] = data.data
 
 def control_effort_callback_2(data):
+    """
+    Update goal velocity for joint 2.
+
+    Args:
+        data: Float64 message.
+    """
+    
     global goal_vel
     global isInitialized
 
@@ -83,6 +108,13 @@ def control_effort_callback_2(data):
         goal_vel[1] = data.data
 
 def control_effort_callback_3(data):
+    """
+    Update goal velocity for joint 3.
+
+    Args:
+        data: Float64 message.
+    """
+    
     global goal_vel
     global isInitialized
 
@@ -91,10 +123,24 @@ def control_effort_callback_3(data):
         goal_vel[2] = data.data
 
 def control_effort_callback_4(data):
+    """
+    Update goal velocity for joint 4.
+
+    Args:
+        data: Float64 message.
+    """
+    
     global goal_vel
     goal_vel[3] = data.data
 
 def control_effort_callback_5(data):
+    """
+    Update goal velocity for joint 5.
+
+    Args:
+        data: Float64 message.
+    """
+    
     global goal_vel
     global isInitialized
 
@@ -103,6 +149,13 @@ def control_effort_callback_5(data):
         goal_vel[4] = data.data
 
 def control_effort_callback_6(data):
+    """
+    Update goal velocity for joint 6.
+
+    Args:
+        data: Float64 message.
+    """
+    
     global goal_vel
     global isInitialized
 
@@ -111,6 +164,13 @@ def control_effort_callback_6(data):
         goal_vel[5] = data.data
 
 def control_effort_callback_7(data):
+    """
+    Update goal velocity for joint 7.
+
+    Args:
+        data: Float64 message.
+    """
+    
     global goal_vel
     global isInitialized
 
@@ -119,8 +179,15 @@ def control_effort_callback_7(data):
         goal_vel[6] = data.data
 
 
-# Calculates geodesic (shortest) angular distance and sets the goal positions relative to current positions
 def relative_setpoint(goal_positions):
+    """
+    Calculate geodesic (shortest) angular distance and set the goal positions 
+    relative to current positions.
+
+    Args:
+    - goal_positions: a list of the goal joint positions
+    """
+    
     global goal_abs_pos, goal_rel_pos, current_abs_pos, start_abs_pos, continuous_joint_indices
 
     # Goal absolute coordinates input
@@ -131,25 +198,39 @@ def relative_setpoint(goal_positions):
 
     for joint_index in range(7):
 
-        # Recalculate joint relative feedback for continuous roation joints 
+        # Recalculate joint relative feedback for continuous rotation joints 
         if joint_index in continuous_joint_indices:
 
             # Calculate geodesic angular distance http://motion.pratt.duke.edu/RoboticSystems/3DRotations.html#Geodesic-distance-and-interpolation
+            
+            # If the distance between the goal and current position is within -pi to pi range
             if -1 * math.pi < goal_abs_pos[joint_index] - current_abs_pos[joint_index] <= math.pi:
                 goal_rel_pos[joint_index] = goal_abs_pos[joint_index] - current_abs_pos[joint_index]
             
+            # If the distance between the goal and current position is greater than pi
             elif goal_abs_pos[joint_index] - current_abs_pos[joint_index] > math.pi:
                 goal_rel_pos[joint_index] = goal_abs_pos[joint_index] - current_abs_pos[joint_index] - 2 * math.pi
-
+                
+            # If the distance between the goal and current position is less than or equal to -pi
             elif goal_abs_pos[joint_index] - current_abs_pos[joint_index] <= -1 * math.pi:
                 goal_rel_pos[joint_index] = goal_abs_pos[joint_index] - current_abs_pos[joint_index] + 2 * math.pi
 
+        # For non-continuous rotation joints
         else:
             goal_rel_pos[joint_index] = goal_abs_pos[joint_index] - current_abs_pos[joint_index]
 
-
-# RelaxedIK callback function
 def relative_setpoint_callback(data):
+    """
+    The callback function for RelaxedIK. Calls relative_setpoint() function to calculate
+    the relative setpoint based on the input absolute goal positions from RelaxedIK.
+
+    Args:
+    - data: joint angles solution from RelaxedIK
+
+    Returns:
+    None
+    """
+    
     global isInitialized
 
     # Block callback function until all components are initialized
@@ -169,9 +250,19 @@ def relative_setpoint_callback(data):
         # Calculate relative setpoint based on the input absolute goal positions
         relative_setpoint(goal_positions)
 
-
-# Calculates geodesic (shortest) angular distance and sets the goal positions relative to current positions
 def pid_setpoint_handler(req):
+    """
+    Handler function to receive and process pid setpoint requests.
+
+    Args:
+        req: a ROS service request object
+
+    Returns:
+        True if the setpoint request is processed successfully, 
+        False otherwise.
+
+    """
+    
     global isInitialized, motionFinished
 
     # Block callback function until all components are initialized
@@ -199,6 +290,17 @@ def pid_setpoint_handler(req):
 
 # Set a velocity limit in percentage (0.0 to 1.0)
 def pid_vel_limit_handler(req):
+    """
+    Handler function to set a velocity limit in percentage.
+    
+    Args:
+        req: a ROS service request object
+
+    Returns:
+        True if the velocity limit is set successfully, 
+        False otherwise.
+    """
+    
     global vel_limit, max_vel, min_vel
 
     # Block callback function until all components are initialized
@@ -218,8 +320,17 @@ def pid_vel_limit_handler(req):
     return False
 
 
-# Check if all joints have an absolute velocity value lower than a threshold and returns True
 def motion_finished(velocities):
+    """
+    Check if motion has finished, that is if all joints have an absolute velocity value lower than a threshold.
+
+    Args:
+        velocities: a list of velocities for each joint
+
+    Returns:
+        True if all velocities are zero, False otherwise.
+    """
+    
     for vel in velocities:
         if abs(vel) > 0.01:
             return False
@@ -227,15 +338,18 @@ def motion_finished(velocities):
     return True
 
 
-# This function is called when the node is shutting down
 def node_shutdown():
+    """
+    Stop arm motion when the node is shutting down.
+    """
+    
     print("\nNode is shutting down...")
 
     # Stop arm movement
     stop_arm_srv()
 
-
 if __name__ == '__main__':
+    
     # Initialize the node
     rospy.init_node("pid_joints", anonymous=True)
     rospy.on_shutdown(node_shutdown)
@@ -251,9 +365,10 @@ if __name__ == '__main__':
     # Starting velocities (received from PID as control effort)
     goal_vel = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
-    # Absolute goal positions
+    # Absolute goal joint positions
     goal_abs_pos = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
+    # Relative goal joint positions
     goal_rel_pos = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
     # Absolute current (feedback) joint positions
@@ -271,7 +386,7 @@ if __name__ == '__main__':
     # Joint velocity limits in radians
     max_velocities = [1.396, 1.396, 1.396, 1.396, 1.222, 1.222, 1.222]
 
-    # Publishing
+    # Publishers
     state_1 = rospy.Publisher('/joint_1/state', Float64, queue_size=1)
     state_2 = rospy.Publisher('/joint_2/state', Float64, queue_size=1)
     state_3 = rospy.Publisher('/joint_3/state', Float64, queue_size=1)
@@ -292,7 +407,7 @@ if __name__ == '__main__':
 
     pid_motion_pub = rospy.Publisher('/pid/motion_finished', Bool, queue_size=1)
     
-    # Subscribing
+    # Subscribers
     rospy.Subscriber('/my_gen3/base_feedback/joint_state', JointState, feedback_callback)
 
     rospy.Subscriber('/joint_1/control_effort', Float64, control_effort_callback_1)
