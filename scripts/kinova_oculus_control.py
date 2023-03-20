@@ -21,8 +21,7 @@ import kinova_positional_control.srv as posctrl_srv
 class Kinova_Oculus_control():
 
     def __init__(self):
-        """
-        Initialize the Kinova Oculus Control class, including ROS node,
+        """Initializes the Kinova Oculus Control class, including ROS node,
         flag variables, ROS publishers and subscribers, and ROS service proxies.
         """
 
@@ -56,16 +55,14 @@ class Kinova_Oculus_control():
         self.stop_arm_srv = rospy.ServiceProxy('my_gen3/base/stop', Stop)
 
     def pid_motion_finished_callback(self, data):
-        """
-        Callback function for the '/pid/motion_finished' topic that updates the
+        """Callback function for the '/pid/motion_finished' topic that updates the
         'motionFinished' flag variable.
         """
         
         self.motionFinished = data.data
 
     def wait_motion_finished(self):
-        """
-        Block code execution until the 'motionFinished' flag is set or the ROS node
+        """Blocks code execution until the 'motionFinished' flag is set or the ROS node
         is shutdown.
         """
         
@@ -77,8 +74,7 @@ class Kinova_Oculus_control():
             pass
 
     def roslaunch_pid(self):
-        """
-        Launch the 'arm_controller.launch' file from the 'kinova_pid' package. 
+        """Launches the 'arm_controller.launch' file from the 'kinova_pid' package. 
         This function initializes the Kinova PID controller node.
         """
         
@@ -88,8 +84,7 @@ class Kinova_Oculus_control():
         self.pid_launch.start()
 
     def roslaunch_relaxed_ik(self):
-        """
-        Launch the 'relaxed_ik.launch' file from the 'relaxed_ik_ros1' package. 
+        """Launches the 'relaxed_ik.launch' file from the 'relaxed_ik_ros1' package. 
         This function initializes the RelaxedIK node.
         """
         
@@ -99,8 +94,7 @@ class Kinova_Oculus_control():
         self.relaxed_ik_launch.start()
 
     def node_shutdown(self):
-        """
-        This function is called when the node is shutting down. It stops the arm motion and shuts down the PID and 
+        """This function is called when the node is shutting down. It stops the arm motion and shuts down the PID and 
         relaxed IK nodes.
         """
         
@@ -116,8 +110,7 @@ class Kinova_Oculus_control():
         print("\nNode has shut down.")
             
     def initialization(self):
-        """
-        This function Initializes the system by homing the robotic arm, with velocity limit set to 20%, 
+        """Initializes the system by homing the robotic arm, with velocity limit set to 20%, 
         to a pre-specified initial configuration (starting_config in kortex_info.yaml) with relaxedIK.
         """
         
@@ -146,8 +139,7 @@ class Kinova_Oculus_control():
         print("\nSystem is ready.\n")
 
 def tracking_sm():
-    """
-    State machine for tracking.
+    """State machine for tracking.
     """
     
     # If the grip Button is pressed
@@ -183,8 +175,7 @@ def tracking_sm():
         if system.isInitialized: print("\nTracking is OFF.\n")
 
 def tracking():
-    """
-    This function publishes the desired end-effector position and orientation to relaxedIK and provides gripper control.
+    """Publishes the desired end-effector position and orientation to relaxedIK and provides gripper control.
     It tracks the target position by calculating the difference between the oculus input and controller compensation.
     """
     

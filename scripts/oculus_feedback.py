@@ -1,16 +1,10 @@
 #!/usr/bin/env python
 
 import rospy
-import transformations as T
 import numpy as np
-import math
 
 from ROS_TCP_Endpoint_msgs.msg import ControllerInput
-import geometry_msgs.msg as geom_msgs
 from std_msgs.msg import *
-import gopher_ros_clearcore.msg as clearcore_msg
-import gopher_ros_clearcore.srv as clearcore_srv
-
 from utils import *
 
 class Headset:
@@ -48,9 +42,9 @@ class Headset:
         #Service
         self.gripper_command_srv = rospy.ServiceProxy('my_gen3/base/send_gripper_command', SendGripperCommand)
 
+
     def right_callback(self, data):
-        """
-        Callback function for right controller info. Transform the controller input position from 
+        """Callback function for right controller info. Transform the controller input position from 
         Left-Handed Coordinate system to Right-handed Coordinate system: 
         1) swap y and z axis;
         2) swap x and new y (which was z) to have x facing forward;
@@ -77,9 +71,9 @@ class Headset:
         # Transition from Left-handed CS (Unity) to Right-handed CS (Global) for controller position
         self.input_pos_gcs = np.array([ -1* data.controller_pos_z, data.controller_pos_x, data.controller_pos_y ])
 
+
     def gripper_control(self, mode, value):
-        """
-        Control the gripper by sending a gripper command to the Kinova robot arm.
+        """Control the gripper by sending a gripper command to the Kinova robot arm.
 
         Args:
             mode (int): The mode of the gripper command (1 for force, 2 for velocity, 3 for position)
@@ -103,9 +97,9 @@ class Headset:
 
         self.gripper_command_srv(gripper_command)
 
+
     def gripper_sm(self):
-        """
-        Control the gripper using a state machine.
+        """Control the gripper using a state machine.
         """
         
         if self.gripperState == "open" and self.gripperButtonState and self.gripperButtonReleased:

@@ -9,9 +9,9 @@ from kortex_driver.msg import *
 from sensor_msgs.msg import JointState
 import kinova_positional_control.srv as posctrl_srv
 
+
 def feedback_callback(data):   
-    """
-    Callback function to receive feedback from the Kinova arm.
+    """Callback function to receive feedback from the Kinova arm.
 
     This function receives the current absolute joint positions of the Kinova arm and publishes the corresponding
     relative joint positions. The relative joint positions are calculated as the difference between the current
@@ -76,10 +76,9 @@ def feedback_callback(data):
         state_6.publish(round(current_rel_pos[5], 4))
         state_7.publish(round(current_rel_pos[6], 4))
     
-# Update joint velocities
+
 def control_effort_callback_1(data):
-    """
-    Update goal velocity for joint 1.
+    """Update goal velocity for joint 1.
 
     Args:
         data: Float64 message.
@@ -92,9 +91,9 @@ def control_effort_callback_1(data):
     if isInitialized:
         goal_vel[0] = data.data
 
+
 def control_effort_callback_2(data):
-    """
-    Update goal velocity for joint 2.
+    """Update goal velocity for joint 2.
 
     Args:
         data: Float64 message.
@@ -107,9 +106,9 @@ def control_effort_callback_2(data):
     if isInitialized:
         goal_vel[1] = data.data
 
+
 def control_effort_callback_3(data):
-    """
-    Update goal velocity for joint 3.
+    """Update goal velocity for joint 3.
 
     Args:
         data: Float64 message.
@@ -122,9 +121,9 @@ def control_effort_callback_3(data):
     if isInitialized:
         goal_vel[2] = data.data
 
+
 def control_effort_callback_4(data):
-    """
-    Update goal velocity for joint 4.
+    """Update goal velocity for joint 4.
 
     Args:
         data: Float64 message.
@@ -133,9 +132,9 @@ def control_effort_callback_4(data):
     global goal_vel
     goal_vel[3] = data.data
 
+
 def control_effort_callback_5(data):
-    """
-    Update goal velocity for joint 5.
+    """Update goal velocity for joint 5.
 
     Args:
         data: Float64 message.
@@ -148,9 +147,9 @@ def control_effort_callback_5(data):
     if isInitialized:
         goal_vel[4] = data.data
 
+
 def control_effort_callback_6(data):
-    """
-    Update goal velocity for joint 6.
+    """Update goal velocity for joint 6.
 
     Args:
         data: Float64 message.
@@ -163,9 +162,9 @@ def control_effort_callback_6(data):
     if isInitialized:
         goal_vel[5] = data.data
 
+
 def control_effort_callback_7(data):
-    """
-    Update goal velocity for joint 7.
+    """Update goal velocity for joint 7.
 
     Args:
         data: Float64 message.
@@ -180,8 +179,7 @@ def control_effort_callback_7(data):
 
 
 def relative_setpoint(goal_positions):
-    """
-    Calculate geodesic (shortest) angular distance and set the goal positions 
+    """Calculate geodesic (shortest) angular distance and set the goal positions 
     relative to current positions.
 
     Args:
@@ -219,9 +217,9 @@ def relative_setpoint(goal_positions):
         else:
             goal_rel_pos[joint_index] = goal_abs_pos[joint_index] - current_abs_pos[joint_index]
 
+
 def relative_setpoint_callback(data):
-    """
-    The callback function for RelaxedIK. Calls relative_setpoint() function to calculate
+    """The callback function for RelaxedIK. Calls relative_setpoint() function to calculate
     the relative setpoint based on the input absolute goal positions from RelaxedIK.
 
     Args:
@@ -250,9 +248,9 @@ def relative_setpoint_callback(data):
         # Calculate relative setpoint based on the input absolute goal positions
         relative_setpoint(goal_positions)
 
+
 def pid_setpoint_handler(req):
-    """
-    Handler function to receive and process pid setpoint requests.
+    """Handler function to receive and process pid setpoint requests.
 
     Args:
         req: a ROS service request object
@@ -288,10 +286,8 @@ def pid_setpoint_handler(req):
     return False
 
 
-# Set a velocity limit in percentage (0.0 to 1.0)
 def pid_vel_limit_handler(req):
-    """
-    Handler function to set a velocity limit in percentage.
+    """Handler function to set a velocity limit in percentage.
     
     Args:
         req: a ROS service request object
@@ -321,8 +317,7 @@ def pid_vel_limit_handler(req):
 
 
 def motion_finished(velocities):
-    """
-    Check if motion has finished, that is if all joints have an absolute velocity value lower than a threshold.
+    """Check if motion has finished, that is if all joints have an absolute velocity value lower than a threshold.
 
     Args:
         velocities: a list of velocities for each joint
@@ -339,14 +334,14 @@ def motion_finished(velocities):
 
 
 def node_shutdown():
-    """
-    Stop arm motion when the node is shutting down.
+    """Stop arm motion when the node is shutting down.
     """
     
     print("\nNode is shutting down...")
 
     # Stop arm movement
     stop_arm_srv()
+
 
 if __name__ == '__main__':
     
