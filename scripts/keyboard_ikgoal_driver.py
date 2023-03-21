@@ -167,8 +167,8 @@ if __name__ == '__main__':
             rospy.signal_shutdown()
 
         target_pos = np.array([position_r[0], position_r[1], position_r[2]])
-    
-        relaxedik_publish(target_pos, [1, 0, 0, 0])
+        target_orientation = np.array([rotation_r[0], rotation_r[1], rotation_r[2], rotation_r[3]])
+        relaxedik_publish(target_pos, target_orientation)
 
         q = Bool()
         q.data = False
