@@ -5,10 +5,12 @@
     <arg 
     name="robot_name" 
     default="my_gen3"/>
-    <!-- Controller side: "right" or "left". -->
+
     <arg 
-    name="controller_side" 
-    default="right"/>
+    name="anchor_id" 
+    default="687d0663-d93e-423b-a2a5-16c9ff9b08f7"/>
+
+    <!-- default="374594eb-6114-4816-82e4-ab69f9e2961b"/> -->
 
     <!-- If any of dependency or optional subfiles should not be launched (or
     are launched separately) set corresponding argument to "false". -->
@@ -31,29 +33,39 @@
         </include>
     </group>
 
-    <!-- Oculus controller feedback (dependency): -->
-    <group if="$(arg launch_controller_feedback)">
-        <include 
-        file="$(find oculus_ros)/launch/controller_feedback.launch">
-            <arg 
-            name="controller_side" 
-            value="$(arg controller_side)"/>
-        </include>
-    </group>
+    <!-- TF updates: -->
+    <node 
+    pkg="kinova_positional_control" 
+    type="update_transforms.py" 
+    name="tf_updates" 
+    output="screen">
+        <param 
+        name="anchor_id" 
+        value="$(arg anchor_id)"/>
+        <param 
+        name="robot_name" 
+        value="$(arg robot_name)"/>
+    </node>
 
-    <!-- Oculus mapping: -->
+    <!-- HoloLens mapping: -->
     <group ns="/$(arg robot_name)">
         <node 
         pkg="kinova_positional_control" 
-        type="oculus_mapping.py" 
-        name="oculus_mapping" 
+        type="hololens_mapping.py" 
+        name="hololens_mapping" 
         output="screen">
             <param 
             name="robot_name" 
             value="$(arg robot_name)"/>
             <param 
-            name="controller_side" 
-            value="$(arg controller_side)"/>
+            name="anchor_id" 
+            value="$(arg anchor_id)"/>
         </node>
     </group> 
+
+    <!-- Robot hologram: -->
+    <!-- <include 
+    file="$(find kinova_positional_control)/launch/holorobot.launch">
+    </include> -->
+    
 </launch>

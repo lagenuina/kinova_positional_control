@@ -1,70 +1,53 @@
 #!/usr/bin/env python
-"""Implements Oculus Quest 2 controller to teleoperation mapping module.
-
-TODO: Add detailed description.
-
-Author (s):
-    1. Nikita Boguslavskii (bognik3@gmail.com), Human-Inspired Robotics (HiRo)
-       lab, Worcester Polytechnic Institute (WPI), 2023.
-    2. Lorena Genua (lorenagenua@gmail.com), Human-Inspired Robotics (HiRo)
-       lab, Worcester Polytechnic Institute (WPI), 2023.
-
-"""
-
 import rospy
 import numpy as np
-import transformations
 import copy
-
+import tf
 from std_msgs.msg import (Bool)
-from geometry_msgs.msg import (Pose)
+from geometry_msgs.msg import (Pose, Point)
+from Scripts.srv import UpdatePosition
 
-from oculus_ros.msg import (ControllerButtons)
 
-
-class OculusMapping:
+class HoloLensMapping:
     """
     
     """
 
     def __init__(
         self,
-        robot_name='my_gen3',
-        controller_side='right',
-        headset_mode='table',
+        anchor_id,
+        robot_name,
     ):
         """
         
         """
 
-        if controller_side not in ['right', 'left']:
-            raise ValueError(
-                'controller_side should be either "right" or "left".'
-            )
-
         # # Private constants:
 
         # # Public constants:
         self.ROBOT_NAME = robot_name
-        self.CONTROLLER_SIDE = controller_side
-        self.HEADSET_MODE = headset_mode
+        self.anchor_id = anchor_id
+
+        self.listener = tf.TransformListener()
+        self.br = tf.TransformBroadcaster()
+        self.rate = rospy.Rate(5)
 
         # # Private variables:
         self.__input_pose = {
             'position': np.array([0.0, 0.0, 0.0]),
             'orientation': np.array([1.0, 0.0, 0.0, 0.0]),
         }
-        self.__oculus_buttons = ControllerButtons()
 
         # # Public variables:
         self.is_initialized = True
+        # self.tracking_button = False
 
         # # Initialization and dependency status topics:
         self.__is_initialized = False
         self.__dependency_initialized = False
 
         self.__node_is_initialized = rospy.Publisher(
-            f'/{self.ROBOT_NAME}/oculus_mapping/is_initialized',
+            f'/{self.ROBOT_NAME}/hololens_mapping/is_initialized',
             Bool,
             queue_size=1,
         )
@@ -83,12 +66,17 @@ class OculusMapping:
         }
 
         # # Service provider:
+        self.tool_frame_service = rospy.Service(
+            f'/{self.ROBOT_NAME}/request_pose',
+            UpdatePosition,
+            self.pose_request,
+        )
 
         # # Service subscriber:
 
         # # Topic publisher:
         self.__node_is_initialized = rospy.Publisher(
-            f'/{self.ROBOT_NAME}/oculus_mapping/is_initialized',
+            f'/{self.ROBOT_NAME}/hololens_mapping/is_initialized',
             Bool,
             queue_size=1,
         )
@@ -98,33 +86,48 @@ class OculusMapping:
             Pose,
             queue_size=1,
         )
-        self.__teleoperation_tracking_button = rospy.Publisher(
-            f'/{self.ROBOT_NAME}/teleoperation/tracking_button',
-            Bool,
-            queue_size=1,
-        )
-        self.__teleoperation_gripper_button = rospy.Publisher(
-            f'/{self.ROBOT_NAME}/teleoperation/gripper_button',
-            Bool,
-            queue_size=1,
-        )
-        self.__teleoperation_mode_button = rospy.Publisher(
-            f'/{self.ROBOT_NAME}/teleoperation/mode_button',
-            Bool,
-            queue_size=1,
-        )
+
+        # self.__teleoperation_tracking_button = rospy.Publisher(
+        #     f'/{self.ROBOT_NAME}/teleoperation/tracking_button',
+        #     Bool,
+        #     queue_size=1,
+        # )
+
+        # self.__tool_frame_pose = rospy.Publisher(
+        #     f'/{self.ROBOT_NAME}/tool_frame_position',
+        #     Point,
+        #     queue_size=1,
+        # )
+
+        # self.__teleoperation_gripper_button = rospy.Publisher(
+        #     f'/{self.ROBOT_NAME}/teleoperation/gripper_button',
+        #     Bool,
+        #     queue_size=1,
+        # )
+        # self.__teleoperation_mode_button = rospy.Publisher(
+        #     f'/{self.ROBOT_NAME}/teleoperation/mode_button',
+        #     Bool,
+        #     queue_size=1,
+        # )
 
         # # Topic subscriber:
         rospy.Subscriber(
-            f'/{self.CONTROLLER_SIDE}/controller_feedback/pose',
+            '/hologram_feedback/pose',
             Pose,
-            self.__oculus_pose_callback,
+            self.__hololens_pose_callback,
         )
-        rospy.Subscriber(
-            f'/{self.CONTROLLER_SIDE}/controller_feedback/buttons',
-            ControllerButtons,
-            self.__oculus_buttons_callback,
-        )
+
+        # rospy.Subscriber(
+        #     f'/{self.ROBOT_NAME}/teleoperation/state',
+        #     Bool,
+        #     self.__teleoperation_state_callback,
+        # )
+
+        # rospy.Subscriber(
+        #     f'/{self.ROBOT_NAME}/tf_toolframe',
+        #     Point,
+        #     self.tf_toolframe_update,
+        # )
 
     # # Dependency status callbacks:
     def __teleoperation_callback(self, message):
@@ -135,28 +138,93 @@ class OculusMapping:
         self.__dependency_status['teleoperation'] = message.data
 
     # # Service handlers:
+    def pose_request(self, req):
+
+        try:
+            (trans, rot) = self.listener.lookupTransform(
+                '27f3a118-9846-4547-82bb-96afe7cc7463', 'kortex/tool_frame',
+                rospy.Time(0)
+            )
+
+            tool_frame_position = Point()
+            tool_frame_position.x = trans[0]
+            tool_frame_position.y = trans[1]
+            tool_frame_position.z = trans[2]
+
+            print(trans)
+
+        except (
+            tf.LookupException, tf.ConnectivityException,
+            tf.ExtrapolationException
+        ):
+            self.rate.sleep()
+
+        # self.target_position = trans
+
+        return tool_frame_position
 
     # # Topic callbacks:
-    def __oculus_pose_callback(self, message):
+    def __hololens_pose_callback(self, message):
         """
 
         """
 
-        self.__input_pose['position'][0] = message.position.x
-        self.__input_pose['position'][1] = message.position.y
-        self.__input_pose['position'][2] = message.position.z
+        input_pose = [
+            message.position.x,
+            message.position.y,
+            -message.position.z,
+        ]
 
-        self.__input_pose['orientation'][0] = message.orientation.w
-        self.__input_pose['orientation'][1] = message.orientation.x
-        self.__input_pose['orientation'][2] = message.orientation.y
-        self.__input_pose['orientation'][3] = message.orientation.z
+        input_orientation = [
+            message.orientation.w,
+            message.orientation.x,
+            message.orientation.y,
+            message.orientation.z,
+        ]
 
-    def __oculus_buttons_callback(self, message):
-        """
+        try:
+            self.br.sendTransform(
+                input_pose,
+                input_orientation,
+                rospy.Time.now(),
+                'target',
+                self.anchor_id,
+            )
 
-        """
+            (translation, rotation) = self.listener.lookupTransform(
+                'base_link', 'target', rospy.Time(0)
+            )
 
-        self.__oculus_buttons = message
+            self.__input_pose['position'][0] = translation[0]
+            self.__input_pose['position'][1] = translation[1]
+            self.__input_pose['position'][2] = translation[2]
+
+            self.__input_pose['orientation'][0] = message.orientation.w
+            self.__input_pose['orientation'][1] = message.orientation.x
+            self.__input_pose['orientation'][2] = message.orientation.y
+            self.__input_pose['orientation'][3] = message.orientation.z
+
+        except (
+            tf.LookupException,
+            tf.ConnectivityException,
+            tf.ExtrapolationException,
+        ):
+            self.rate.sleep()
+
+    # def __teleoperation_state_callback(self, message):
+
+    #     self.tracking_button = message.data
+
+    # def tf_toolframe_update(self, message):
+
+    #     if self.tracking_button:
+
+    #         tool_frame_position = Point()
+    #         tool_frame_position.x = message.x
+    #         tool_frame_position.y = message.y
+    #         tool_frame_position.z = message.z
+
+    #         self.__tool_frame_pose.publish(tool_frame_position)
 
     # # Private methods:
     def __check_initialization(self):
@@ -182,7 +250,7 @@ class OculusMapping:
                 if self.__dependency_status[key]:
                     rospy.logerr(
                         (
-                            f'/{self.ROBOT_NAME}/oculus_mapping: '
+                            f'/{self.ROBOT_NAME}/hololens_mapping: '
                             f'lost connection to {key}!'
                         )
                     )
@@ -205,7 +273,7 @@ class OculusMapping:
             rospy.logwarn_throttle(
                 15,
                 (
-                    f'/{self.ROBOT_NAME}/oculus_mapping:'
+                    f'/{self.ROBOT_NAME}/hololens_mapping:'
                     f'{waiting_for}'
                     # f'\nMake sure those dependencies are running properly!'
                 ),
@@ -215,7 +283,7 @@ class OculusMapping:
         if (self.__dependency_initialized):
             if not self.__is_initialized:
                 rospy.loginfo(
-                    f'\033[92m/{self.ROBOT_NAME}/oculus_mapping: ready.\033[0m',
+                    f'\033[92m/{self.ROBOT_NAME}/hololens_mapping: ready.\033[0m',
                 )
 
                 self.__is_initialized = True
@@ -236,27 +304,6 @@ class OculusMapping:
         """
 
         corrected_input_pose = copy.deepcopy(self.__input_pose)
-
-        # # STEP 1: Table or Head mode correction.
-        # If the headset is located on table invert position X and Y axis,
-        # rotate orientation quaternion by 180 degrees around Z.
-        if self.HEADSET_MODE == 'table':
-            corrected_input_pose['position'][0] = (
-                -1 * self.__input_pose['position'][0]
-            )
-            corrected_input_pose['position'][1] = (
-                -1 * self.__input_pose['position'][1]
-            )
-
-            corrected_input_pose['orientation'] = (
-                transformations.quaternion_multiply(
-                    transformations.quaternion_about_axis(
-                        np.deg2rad(180),
-                        (0, 0, 1),
-                    ),
-                    corrected_input_pose['orientation'],
-                )
-            )
 
         pose_message = Pose()
         pose_message.position.x = corrected_input_pose['position'][0]
@@ -282,15 +329,13 @@ class OculusMapping:
             return
 
         self.__publish_teleoperation_pose()
-        self.__teleoperation_tracking_button.publish(
-            self.__oculus_buttons.grip_button
-        )
-        self.__teleoperation_gripper_button.publish(
-            self.__oculus_buttons.trigger_button
-        )
-        self.__teleoperation_mode_button.publish(
-            self.__oculus_buttons.primary_button
-        )
+        # self.__teleoperation_tracking_button.publish(self.tracking_button)
+        # self.__teleoperation_gripper_button.publish(
+        #     self.__hololens_buttons.trigger_button
+        # )
+        # self.__teleoperation_mode_button.publish(
+        #     self.__hololens_buttons.primary_button
+        # )
 
     def node_shutdown(self):
         """
@@ -298,11 +343,11 @@ class OculusMapping:
         """
 
         rospy.loginfo_once(
-            f'/{self.ROBOT_NAME}/oculus_mapping: node is shutting down...',
+            f'/{self.ROBOT_NAME}/hololens_mapping: node is shutting down...',
         )
 
         rospy.loginfo_once(
-            f'/{self.ROBOT_NAME}/oculus_mapping: node has shut down.',
+            f'/{self.ROBOT_NAME}/hololens_mapping: node has shut down.',
         )
 
 
@@ -312,7 +357,7 @@ def main():
     """
 
     rospy.init_node(
-        'oculus_mapping',
+        'hololens_mapping',
         log_level=rospy.INFO,  # TODO: Make this a launch file parameter.
     )
 
@@ -324,21 +369,17 @@ def main():
         default='my_gen3',
     )
 
-    controller_side = rospy.get_param(
-        param_name=f'{rospy.get_name()}/controller_side',
-        default='right',
-    )
+    anchor_id = rospy.get_param(param_name=f'{rospy.get_name()}/anchor_id')
 
-    oculus_kinova_mapping = OculusMapping(
+    hololens_kinova_mapping = HoloLensMapping(
         robot_name=kinova_name,
-        controller_side=controller_side,
-        headset_mode='table',
+        anchor_id=anchor_id,
     )
 
-    rospy.on_shutdown(oculus_kinova_mapping.node_shutdown)
+    rospy.on_shutdown(hololens_kinova_mapping.node_shutdown)
 
     while not rospy.is_shutdown():
-        oculus_kinova_mapping.main_loop()
+        hololens_kinova_mapping.main_loop()
 
 
 if __name__ == '__main__':

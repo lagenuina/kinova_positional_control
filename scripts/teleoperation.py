@@ -62,16 +62,18 @@ class KinovaTeleoperation:
             'position': np.array([0.0, 0.0, 0.0]),
             'orientation': np.array([1.0, 0.0, 0.0, 0.0]),
         }
-        self.__tracking_button = False
+        # self.__tracking_button = False
         self.__gripper_button = False
         self.__mode_button = False
 
-        self.__tracking_state_machine_state = 0
+        # self.__tracking_state_machine_state = 0
         self.__gripper_state_machine_state = 0
         self.__mode_state_machine_state = 0
         self.__control_mode = 'position'
 
+        self.last_pose_tracking = False
         self.__pose_tracking = False
+        self.rate = rospy.Rate(10)
 
         # # Public variables:
         # Last commanded Relaxed IK pose is required to compensate controller
@@ -149,16 +151,23 @@ class KinovaTeleoperation:
             queue_size=1,
         )
 
+        self.__holorobot_pose = rospy.Publisher(
+            '/holorobot/positional_control/input_pose',
+            Pose,
+            queue_size=1,
+        )
+
         # # Topic subscriber:
         rospy.Subscriber(
             f'/{self.ROBOT_NAME}/teleoperation/input_pose',
             Pose,
             self.__input_pose_callback,
         )
+
         rospy.Subscriber(
-            f'/{self.ROBOT_NAME}/teleoperation/tracking_button',
+            f'/{self.ROBOT_NAME}/teleoperation/tracking',
             Bool,
-            self.__tracking_button_callback,
+            self.__tracking_callback,
         )
         rospy.Subscriber(
             f'/{self.ROBOT_NAME}/teleoperation/gripper_button',
@@ -208,12 +217,12 @@ class KinovaTeleoperation:
         self.__input_pose['orientation'][2] = message.orientation.y
         self.__input_pose['orientation'][3] = message.orientation.z
 
-    def __tracking_button_callback(self, message):
+    def __tracking_callback(self, message):
         """
 
         """
 
-        self.__tracking_button = message.data
+        self.__pose_tracking = message.data
 
     def __gripper_button_callback(self, message):
         """
@@ -317,7 +326,7 @@ class KinovaTeleoperation:
 
     def __tracking_state_machine(self, button):
         """
-        
+
         """
 
         # State 0: Grip button was pressed.
@@ -426,10 +435,25 @@ class KinovaTeleoperation:
             )
         )
 
-    def __publish_kinova_pose(self):
+    # # Public methods:
+    def main_loop(self):
         """
         
         """
+        self.__check_initialization()
+
+        if not self.__is_initialized:
+            return
+
+        if (self.last_pose_tracking != self.__pose_tracking):
+
+            self.__calculate_compensation()
+
+        self.last_pose_tracking = self.__pose_tracking
+
+        # self.__tracking_state_machine(self.__tracking_button)
+        self.__gripper_state_machine(self.__gripper_button)
+        self.__mode_state_machine(self.__mode_button)
 
         # Protection against 0, 0, 0 controller input values.
         # Controller loses connection, goes into a sleep mode etc.
@@ -439,7 +463,7 @@ class KinovaTeleoperation:
             and self.__input_pose['position'][2] == 0 and self.__pose_tracking
         ):
             # Stop tracking.
-            self.__tracking_state_machine_state = 0
+            # self.__tracking_state_machine_state = 0
             self.__pose_tracking = False
 
             rospy.logerr(
@@ -469,25 +493,25 @@ class KinovaTeleoperation:
             - self.last_relaxed_ik_pose['position']
         )
 
-        if (input_position_difference > self.MAXIMUM_INPUT_CHANGE):
+        # if (input_position_difference > self.MAXIMUM_INPUT_CHANGE):
 
-            # Stop tracking.
-            self.__tracking_state_machine_state = 0
-            self.__pose_tracking = False
+        #     # Stop tracking.
+        #     self.__tracking_state_machine_state = 0
+        #     self.__pose_tracking = False
 
-            rospy.logerr(
-                (
-                    f'/{self.ROBOT_NAME}/teleoperation: '
-                    f'\nChange in input position exceeded maximum allowed value! '
-                    f'\n- Current input: {np.round(compensated_input_pose["position"], 3)}'
-                    f'\n- Previous input: {np.round(self.last_relaxed_ik_pose["position"], 3)}'
-                    f'\n- Difference (absolute): {np.round(input_position_difference, 3)}'
-                    f'\n- Allowed difference threshold: {np.round(self.MAXIMUM_INPUT_CHANGE, 3)}'
-                    '\nStopped input tracking.'
-                ),
-            )
+        #     rospy.logerr(
+        #         (
+        #             f'/{self.ROBOT_NAME}/teleoperation: '
+        #             f'\nChange in input position exceeded maximum allowed value! '
+        #             f'\n- Current input: {np.round(compensated_input_pose["position"], 3)}'
+        #             f'\n- Previous input: {np.round(self.last_relaxed_ik_pose["position"], 3)}'
+        #             f'\n- Difference (absolute): {np.round(input_position_difference, 3)}'
+        #             f'\n- Allowed difference threshold: {np.round(self.MAXIMUM_INPUT_CHANGE, 3)}'
+        #             '\nStopped input tracking.'
+        #         ),
+        #     )
 
-            return
+        #     return
 
         # Use fixed (last commanded) orientation.
         compensated_input_pose['orientation'] = (
@@ -548,25 +572,10 @@ class KinovaTeleoperation:
         pose_message.orientation.y = compensated_input_pose['orientation'][2]
         pose_message.orientation.z = compensated_input_pose['orientation'][3]
 
-        self.__kinova_pose.publish(pose_message)
-
-    # # Public methods:
-    def main_loop(self):
-        """
-        
-        """
-
-        self.__check_initialization()
-
-        if not self.__is_initialized:
-            return
-
-        self.__tracking_state_machine(self.__tracking_button)
-        self.__gripper_state_machine(self.__gripper_button)
-        self.__mode_state_machine(self.__mode_button)
+        self.__holorobot_pose.publish(pose_message)
 
         if self.__pose_tracking:
-            self.__publish_kinova_pose()
+            self.__kinova_pose.publish(pose_message)
 
     def node_shutdown(self):
         """

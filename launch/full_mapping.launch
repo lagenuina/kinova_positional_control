@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<launch>=
+    <include file="$(find kinova_positional_control)/launch/hololens_mapping.launch"/>
+
+    <node pkg="gopher_keyboard_control" type="manual_hololens_control.py" name="base_hololens_mapping" output="screen"/>>
+
+    <include file="$(find gopher_ros_clearcore)/launch/hololens_chest_control.launch"/>
+</launch>
