@@ -16,7 +16,7 @@ import numpy as np
 import transformations
 from ast import (literal_eval)
 
-from std_msgs.msg import (Bool)
+from std_msgs.msg import (Bool, Int32)
 from geometry_msgs.msg import (Pose)
 
 # from kortex_driver.srv import (Stop)
@@ -62,16 +62,14 @@ class KinovaTeleoperation:
             'position': np.array([0.0, 0.0, 0.0]),
             'orientation': np.array([1.0, 0.0, 0.0, 0.0]),
         }
-        # self.__tracking_button = False
-        self.__gripper_button = False
+        self.__gripper_state = 0
         self.__mode_button = False
 
-        # self.__tracking_state_machine_state = 0
-        self.__gripper_state_machine_state = 0
         self.__mode_state_machine_state = 0
         self.__control_mode = 'position'
 
         self.last_pose_tracking = False
+        self.last_gripper_state = 0
         self.__pose_tracking = False
         self.rate = rospy.Rate(10)
 
@@ -133,10 +131,6 @@ class KinovaTeleoperation:
             f'/{self.ROBOT_NAME}/gripper/position',
             GripperPosition,
         )
-        # self.__stop_arm = rospy.ServiceProxy(
-        #     f'/{self.ROBOT_NAME}/base/stop',
-        #     Stop,
-        # )
 
         # # Topic publisher:
         self.__node_is_initialized = rospy.Publisher(
@@ -169,11 +163,13 @@ class KinovaTeleoperation:
             Bool,
             self.__tracking_callback,
         )
+
         rospy.Subscriber(
-            f'/{self.ROBOT_NAME}/teleoperation/gripper_button',
-            Bool,
-            self.__gripper_button_callback,
+            f'/{self.ROBOT_NAME}/teleoperation/gripper_state',
+            Int32,
+            self.__gripper_callback,
         )
+
         rospy.Subscriber(
             f'/{self.ROBOT_NAME}/teleoperation/mode_button',
             Bool,
@@ -224,12 +220,9 @@ class KinovaTeleoperation:
 
         self.__pose_tracking = message.data
 
-    def __gripper_button_callback(self, message):
-        """
+    def __gripper_callback(self, message):
 
-        """
-
-        self.__gripper_button = message.data
+        self.__gripper_state = message.data
 
     def __mode_button_callback(self, message):
         """
@@ -324,43 +317,6 @@ class KinovaTeleoperation:
 
         self.__node_is_initialized.publish(self.__is_initialized)
 
-    def __tracking_state_machine(self, button):
-        """
-
-        """
-
-        # State 0: Grip button was pressed.
-        if (self.__tracking_state_machine_state == 0 and button):
-
-            self.__tracking_state_machine_state = 1
-
-            if self.TRACKING_MODE == 'hold':
-                self.__calculate_compensation()
-                self.__pose_tracking = True
-
-        # State 1: Grip button was released. Tracking is activated.
-        elif (self.__tracking_state_machine_state == 1 and not button):
-
-            if self.TRACKING_MODE == 'toggle':
-                self.__tracking_state_machine_state = 2
-                self.__calculate_compensation()
-                self.__pose_tracking = True
-
-            elif self.TRACKING_MODE == 'hold':
-                self.__tracking_state_machine_state = 0
-                self.__pose_tracking = False
-
-        # State 2: Grip button was pressed. Tracking is deactivated.
-        elif (self.__tracking_state_machine_state == 2 and button):
-
-            self.__tracking_state_machine_state = 3
-            self.__pose_tracking = False
-
-        # State 3: Grip button was released.
-        elif (self.__tracking_state_machine_state == 3 and not button):
-
-            self.__tracking_state_machine_state = 0
-
     def __mode_state_machine(self, button):
         """
         
@@ -388,33 +344,6 @@ class KinovaTeleoperation:
         elif (self.__mode_state_machine_state == 4 and not button):
 
             self.__mode_state_machine_state = 0
-
-    def __gripper_state_machine(self, button):
-        """
-        
-        """
-
-        # State 0: Button was pressed.
-        if (self.__gripper_state_machine_state == 0 and button):
-
-            self.__gripper_force_grasping(0.0)  # 0.0 for default current.
-            self.__gripper_state_machine_state = 1
-
-        # State 1: Button was released. Force grasping is activated.
-        elif (self.__gripper_state_machine_state == 1 and not button):
-
-            self.__gripper_state_machine_state = 2
-
-        # State 2: Button was pressed. Open the gripper.
-        elif (self.__gripper_state_machine_state == 2 and button):
-
-            self.__gripper_position(0.0)  # 0.0 for open position.
-            self.__gripper_state_machine_state = 3
-
-        # State 3: Button was released.
-        elif (self.__gripper_state_machine_state == 3 and not button):
-
-            self.__gripper_state_machine_state = 0
 
     def __calculate_compensation(self):
         """Calculates the compensation for coordinate systems misalignment.
@@ -451,8 +380,14 @@ class KinovaTeleoperation:
 
         self.last_pose_tracking = self.__pose_tracking
 
-        # self.__tracking_state_machine(self.__tracking_button)
-        self.__gripper_state_machine(self.__gripper_button)
+        if (self.last_gripper_state != self.__gripper_state):
+            if self.__gripper_state == 0:
+                self.__gripper_position(0.0)
+            elif self.__gripper_state == 1:
+                self.__gripper_force_grasping(0.0)
+
+        self.last_gripper_state = self.__gripper_state
+
         self.__mode_state_machine(self.__mode_button)
 
         # Protection against 0, 0, 0 controller input values.
