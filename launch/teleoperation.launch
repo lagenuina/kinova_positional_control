@@ -30,7 +30,7 @@
     experimentally given an input device and desired control sensitivity. -->
     <arg
     name="maximum_input_change"
-    default="0.1"/>
+    default="0.5"/>
 
     <!-- If any of dependency or optional subfiles should not be launched (or
     are launched separately) set corresponding argument to "false". -->

@@ -56,6 +56,7 @@ class KinovaTeleoperation:
         self.COMPENSATE_ORIENTATION = compensate_orientation
         self.MAXIMUM_INPUT_CHANGE = maximum_input_change
         self.CONVENIENCE_COMPENSATION = convenience_compensation
+        self.rate = rospy.Rate(5)
 
         # # Private variables:
         self.__input_pose = {
@@ -582,6 +583,7 @@ def main():
 
     while not rospy.is_shutdown():
         kinova_teleoperation.main_loop()
+        kinova_teleoperation.rate.sleep()
 
 
 if __name__ == '__main__':

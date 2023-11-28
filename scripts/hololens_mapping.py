@@ -380,6 +380,7 @@ def main():
 
     while not rospy.is_shutdown():
         hololens_kinova_mapping.main_loop()
+        hololens_kinova_mapping.rate.sleep()
 
 
 if __name__ == '__main__':
