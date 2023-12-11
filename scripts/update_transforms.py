@@ -42,11 +42,23 @@ class UpdateTransforms:
             'position': np.array([0.0, 0.0, 0.0]),
             'orientation': np.array([0.0, 0.0, 0.0, 1.0]),
         }
+
+        self.target_cam_base_tf = {
+            'position': np.array([0.0, 0.0, 0.0]),
+            'orientation': np.array([0.0, 0.0, 0.0, 1.0]),
+        }
+        
         self.camera_target_tf = [0, 0, 0]
         self.target_cam_anchor_tf = {
             'position': np.array([0.0, 0.0, 0.0]),
             'orientation': np.array([0.0, 0.0, 0.0, 1.0]),
         }
+
+        self.trans_tool_base = {
+            'position': np.array([0.0, 0.0, 0.0]),
+            'orientation': np.array([1.0, 0.0, 0.0, 0.0]),
+        }
+        
         self.__tf_toolframe_anchor = rospy.Publisher(
             f'/{self.ROBOT_NAME}/tf_toolframe',
             Point,
@@ -55,6 +67,12 @@ class UpdateTransforms:
 
         self.__tf_baselink_anchor = rospy.Publisher(
             f'/{self.ROBOT_NAME}/tf_baselink',
+            Pose,
+            queue_size=1,
+        )
+
+        self.__tf_baselink_toolframe = rospy.Publisher(
+            f'/{self.ROBOT_NAME}/tf_base_tool_frame',
             Pose,
             queue_size=1,
         )
@@ -95,6 +113,12 @@ class UpdateTransforms:
             queue_size=1,
         )
 
+        self.__tf_target_camera_base_pub = rospy.Publisher(
+            '/my_gen3/tf_base_target_cam',
+            Pose,
+            queue_size=1,
+        )
+
     def __unity_anchor_rotation_callback(self, message):
 
         self.world_rotation_anchor = [
@@ -120,17 +144,14 @@ class UpdateTransforms:
         self.camera_tf['orientation'][2] = message.orientation.z
         self.camera_tf['orientation'][3] = message.orientation.w
 
-        # self.camera_tf['orientation'] = transform.quaternion_multiply(
-        #     transform.quaternion_about_axis(
-        #         np.deg2rad(90),
-        #         (
-        #             1,
-        #             0,
-        #             0,
-        #         ),
-        #     ),
-        #     self.camera_tf['orientation'],
-        # )
+        quaternions = transform.quaternion_multiply(
+            (1, 0, 0, 0), self.camera_tf['orientation'],  
+        )
+
+        self.camera_tf['orientation'][0] = -quaternions[3]
+        self.camera_tf['orientation'][1] = quaternions[0]
+        self.camera_tf['orientation'][2] = quaternions[1]
+        self.camera_tf['orientation'][3] = quaternions[2]
 
     def __camera_target_callback(self, message):
 
@@ -166,9 +187,10 @@ class UpdateTransforms:
             'kortex/base_link', 'base_link'
         )
 
+        # (-0.9615019, 0, -0.2747984, 0)
         self.br.sendTransform(
             self.camera_tf['position'],
-            (0.7071068, 0, -0.7071068, 0),
+            self.camera_tf['orientation'],
             rospy.Time.now(),
             '/workspace_cam',
             self.anchor_frame,
@@ -196,17 +218,28 @@ class UpdateTransforms:
              self.rot_tool_frame) = self.listener.lookupTransform(
                  self.anchor_frame, 'kortex/tool_frame', rospy.Time(0)
              )
+            
+            (self.trans_tool_base['position'],
+             self.trans_tool_base['orientation']) = self.listener.lookupTransform(
+                '/base_link', 'kortex/tool_frame', rospy.Time(0)
+            )
 
             (self.trans_kortex_baselink,
              self.rot_kortex_baselink) = self.listener.lookupTransform(
                  self.anchor_frame, 'kortex/base_link', rospy.Time(0)
-             )
+            )
 
             (
                 self.target_cam_anchor_tf['position'],
                 self.target_cam_anchor_tf['orientation']
             ) = self.listener.lookupTransform(
                 self.anchor_frame,
+                '/target_cam',
+                rospy.Time(0),
+            )
+
+            (self.target_cam_base_tf['position'], self.target_cam_base_tf['orientation']) = self.listener.lookupTransform(
+                '/base_link',
                 '/target_cam',
                 rospy.Time(0),
             )
@@ -254,6 +287,17 @@ class UpdateTransforms:
         base_link_position.orientation.w = self.rot_kortex_baselink[3]
 
         self.__tf_baselink_anchor.publish(base_link_position)
+        
+        base_to_toolframe = Pose()
+        base_to_toolframe.position.x = self.trans_tool_base['position'][0]
+        base_to_toolframe.position.y = self.trans_tool_base['position'][1]
+        base_to_toolframe.position.z = self.trans_tool_base['position'][2]
+        base_to_toolframe.orientation.x = self.trans_tool_base['orientation'][0]
+        base_to_toolframe.orientation.y = self.trans_tool_base['orientation'][1]
+        base_to_toolframe.orientation.z = self.trans_tool_base['orientation'][2]
+        base_to_toolframe.orientation.w = self.trans_tool_base['orientation'][3]
+
+        self.__tf_baselink_toolframe.publish(base_to_toolframe)
 
         target_cam_position = Pose()
         target_cam_position.position.x = self.target_cam_anchor_tf['position'][0
@@ -271,6 +315,25 @@ class UpdateTransforms:
         target_cam_position.orientation.w = self.target_cam_anchor_tf[
             'orientation'][3]
         self.__tf_target_camera_pub.publish(target_cam_position)
+
+        target_cam_base = Pose()
+        target_cam_base.position.x = self.target_cam_base_tf['position'][0
+                                                                              ]
+        target_cam_base.position.y = self.target_cam_base_tf['position'][1
+                                                                              ]
+        target_cam_base.position.z = self.target_cam_base_tf['position'][2
+                                                                              ]
+        target_cam_base.orientation.x = self.target_cam_base_tf[
+            'orientation'][0]
+        target_cam_base.orientation.y = self.target_cam_base_tf[
+            'orientation'][1]
+        target_cam_base.orientation.z = self.target_cam_base_tf[
+            'orientation'][2]
+        target_cam_base.orientation.w = self.target_cam_base_tf[
+            'orientation'][3]
+        
+        self.__tf_target_camera_base_pub.publish(target_cam_base)
+        
 
 
 if __name__ == '__main__':

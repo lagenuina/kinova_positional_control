@@ -5,8 +5,6 @@ import copy
 import tf
 from std_msgs.msg import (Bool)
 from geometry_msgs.msg import (Pose, Point)
-from Scripts.srv import UpdatePosition
-
 
 class HoloLensMapping:
     """
@@ -66,11 +64,6 @@ class HoloLensMapping:
         }
 
         # # Service provider:
-        self.tool_frame_service = rospy.Service(
-            f'/{self.ROBOT_NAME}/request_pose',
-            UpdatePosition,
-            self.pose_request,
-        )
 
         # # Service subscriber:
 
@@ -137,32 +130,6 @@ class HoloLensMapping:
 
         self.__dependency_status['teleoperation'] = message.data
 
-    # # Service handlers:
-    def pose_request(self, req):
-
-        try:
-            (trans, rot) = self.listener.lookupTransform(
-                '27f3a118-9846-4547-82bb-96afe7cc7463', 'kortex/tool_frame',
-                rospy.Time(0)
-            )
-
-            tool_frame_position = Point()
-            tool_frame_position.x = trans[0]
-            tool_frame_position.y = trans[1]
-            tool_frame_position.z = trans[2]
-
-            print(trans)
-
-        except (
-            tf.LookupException, tf.ConnectivityException,
-            tf.ExtrapolationException
-        ):
-            self.rate.sleep()
-
-        # self.target_position = trans
-
-        return tool_frame_position
-
     # # Topic callbacks:
     def __hololens_pose_callback(self, message):
         """
@@ -192,7 +159,7 @@ class HoloLensMapping:
             )
 
             (translation, rotation) = self.listener.lookupTransform(
-                'base_link', 'target', rospy.Time(0)
+                '/base_link', '/target', rospy.Time(0)
             )
 
             self.__input_pose['position'][0] = translation[0]
@@ -211,20 +178,6 @@ class HoloLensMapping:
         ):
             self.rate.sleep()
 
-    # def __teleoperation_state_callback(self, message):
-
-    #     self.tracking_button = message.data
-
-    # def tf_toolframe_update(self, message):
-
-    #     if self.tracking_button:
-
-    #         tool_frame_position = Point()
-    #         tool_frame_position.x = message.x
-    #         tool_frame_position.y = message.y
-    #         tool_frame_position.z = message.z
-
-    #         self.__tool_frame_pose.publish(tool_frame_position)
 
     # # Private methods:
     def __check_initialization(self):

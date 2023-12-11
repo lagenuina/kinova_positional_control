@@ -17,13 +17,14 @@ import transformations
 from ast import (literal_eval)
 
 from std_msgs.msg import (Bool, Int32)
-from geometry_msgs.msg import (Pose)
+from geometry_msgs.msg import (Pose, Point)
 
 # from kortex_driver.srv import (Stop)
 from kinova_positional_control.srv import (
     GripperForceGrasping,
     GripperPosition,
 )
+from Scripts.srv import TrackingState
 
 
 class KinovaTeleoperation:
@@ -56,6 +57,7 @@ class KinovaTeleoperation:
         self.COMPENSATE_ORIENTATION = compensate_orientation
         self.MAXIMUM_INPUT_CHANGE = maximum_input_change
         self.CONVENIENCE_COMPENSATION = convenience_compensation
+        self.rate = rospy.Rate(5)
 
         # # Private variables:
         self.__input_pose = {
@@ -71,7 +73,7 @@ class KinovaTeleoperation:
         self.last_pose_tracking = False
         self.last_gripper_state = 0
         self.__pose_tracking = False
-        self.rate = rospy.Rate(5)
+        self.rate = rospy.Rate(10)
 
         # # Public variables:
         # Last commanded Relaxed IK pose is required to compensate controller
@@ -89,6 +91,8 @@ class KinovaTeleoperation:
             'position': np.array([0.0, 0.0, 0.0]),
             'orientation': np.array([1.0, 0.0, 0.0, 0.0]),
         }
+
+        self.tool_frame_position = [0, 0, 0]
 
         # # Initialization and dependency status topics:
         self.__is_initialized = False
@@ -121,6 +125,11 @@ class KinovaTeleoperation:
         }
 
         # # Service provider:
+        self.tracking_state_service = rospy.Service(
+            '/tracking_state_service',
+            TrackingState,
+            self.tracking_state,
+        )
 
         # # Service subscriber:
         self.__gripper_force_grasping = rospy.ServiceProxy(
@@ -152,17 +161,25 @@ class KinovaTeleoperation:
         )
 
         # # Topic subscriber:
+        # Commented this
+
+        # rospy.Subscriber(
+        #     f'/{self.ROBOT_NAME}/teleoperation/input_pose',
+        #     Pose,
+        #     self.__input_pose_callback,
+        # )
+
         rospy.Subscriber(
-            f'/{self.ROBOT_NAME}/teleoperation/input_pose',
+            f'/{self.ROBOT_NAME}/tf_base_target_cam',
             Pose,
             self.__input_pose_callback,
         )
 
-        rospy.Subscriber(
-            f'/{self.ROBOT_NAME}/teleoperation/tracking',
-            Bool,
-            self.__tracking_callback,
-        )
+        # rospy.Subscriber(
+        #     f'/{self.ROBOT_NAME}/teleoperation/tracking',
+        #     Bool,
+        #     self.__tracking_callback,
+        # )
 
         rospy.Subscriber(
             f'/{self.ROBOT_NAME}/teleoperation/gripper_state',
@@ -179,6 +196,11 @@ class KinovaTeleoperation:
             f'/{self.ROBOT_NAME}/relaxed_ik/commanded_pose_gcs',
             Pose,
             self.__commanded_pose_callback,
+        )
+
+        rospy.Subscriber(f'/{self.ROBOT_NAME}/tf_base_tool_frame',
+            Pose,
+            self.__toolframe_transform_callback,
         )
 
     # # Dependency status callbacks:
@@ -203,22 +225,36 @@ class KinovaTeleoperation:
         """
 
         """
+        if self.__pose_tracking:
+            print("Here!")
+            self.__input_pose['position'][0] = message.position.x
+            self.__input_pose['position'][1] = message.position.y
+            self.__input_pose['position'][2] = message.position.z
 
-        self.__input_pose['position'][0] = message.position.x
-        self.__input_pose['position'][1] = message.position.y
-        self.__input_pose['position'][2] = message.position.z
+            self.__input_pose['orientation'][0] = message.orientation.w
+            self.__input_pose['orientation'][1] = message.orientation.x
+            self.__input_pose['orientation'][2] = message.orientation.y
+            self.__input_pose['orientation'][3] = message.orientation.z
 
-        self.__input_pose['orientation'][0] = message.orientation.w
-        self.__input_pose['orientation'][1] = message.orientation.x
-        self.__input_pose['orientation'][2] = message.orientation.y
-        self.__input_pose['orientation'][3] = message.orientation.z
+    # def __tracking_callback(self, message):
+    #     """
 
-    def __tracking_callback(self, message):
-        """
+    #     """
 
-        """
+    #     self.__pose_tracking = message.data
 
-        self.__pose_tracking = message.data
+    def tracking_state(self, request):
+        
+        self.__pose_tracking = request
+
+        return True
+
+    def __toolframe_transform_callback(self, message):
+
+        if not self.__pose_tracking:
+            self.__input_pose['position'][0] = message.position.x
+            self.__input_pose['position'][1] = message.position.y
+            self.__input_pose['position'][2] = message.position.z
 
     def __gripper_callback(self, message):
 
@@ -529,11 +565,13 @@ class KinovaTeleoperation:
 
         # self.__holorobot_pose.publish(pose_message)
 
+        # print(self.__pose_tracking)
+        # # print(pose_message)
         # if self.__pose_tracking:
         #     self.__kinova_pose.publish(pose_message)
-        #     # self.rate.sleep(5)
 
     def generate_waypoints(self, current_pose, target_pose, max_distance=0.1):
+        
         # Check if the distance between current and target poses is greater than max_distance
         distance = np.sqrt((current_pose[0] - target_pose[0])**2 + (current_pose[1] - target_pose[1])**2 + (current_pose[2] - target_pose[2])**2)
         
@@ -565,7 +603,7 @@ class KinovaTeleoperation:
             # rospy.loginfo("No need to generate waypoints. The distance is within the threshold.")
             return waypoints
         
-
+    
     def node_shutdown(self):
         """
         
@@ -589,7 +627,7 @@ def main():
     """
 
     rospy.init_node(
-        'teleoperation',
+        'robot_control',
         log_level=rospy.INFO,  # TODO: Make this a launch file parameter.
     )
 

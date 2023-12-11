@@ -16,6 +16,9 @@
     are launched separately) set corresponding argument to "false". -->
     <arg 
     name="launch_teleoperation" 
+    default="false"/>
+    <arg 
+    name="launch_autonomous" 
     default="true"/>
     <arg 
     name="launch_controller_feedback" 
@@ -31,6 +34,15 @@
             name="robot_name" 
             value="$(arg robot_name)"/>
         </include>
+    </group>
+
+    <group if="$(arg launch_autonomous)">
+    <include 
+    file="$(find kinova_positional_control)/launch/robot_control.launch">
+        <arg 
+        name="robot_name" 
+        value="$(arg robot_name)"/>
+    </include>
     </group>
 
     <!-- TF updates: -->

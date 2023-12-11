@@ -54,6 +54,8 @@ class KinovaPositionalControl:
 
         # # Private constants:
 
+        self.rate = rospy.Rate(5)
+
         # # Public constants:
         self.ROBOT_NAME = robot_name
 
@@ -759,6 +761,7 @@ def main():
 
     while not rospy.is_shutdown():
         pose_controller.main_loop()
+        pose_controller.rate.sleep()
 
 
 if __name__ == '__main__':
