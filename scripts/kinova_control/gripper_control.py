@@ -47,6 +47,7 @@ class KinovaGripperControl:
         self.__gripper_current = 0.0
         self.__activate_force_grasping = False
         self.__target_gripper_current = 0.0
+        self.__grasped_state = False
 
         # # Public variables:
 
@@ -83,6 +84,7 @@ class KinovaGripperControl:
         )
 
         # # Topic publisher:
+        self.__grasped_object = rospy.Publisher(f'/{self.ROBOT_NAME}/grasping', Bool, queue_size = 1,)
 
         # # Topic subscriber:
         self.__kortex_feedback = rospy.Subscriber(
@@ -259,6 +261,8 @@ class KinovaGripperControl:
             # Close the gripper until the current raises to a value higher than
             # 0.04, indicating contact with an object.
             if (self.__gripper_current < self.__target_gripper_current):
+                self.__grasped_state = False
+                
                 # Close the gripper using a velocity command.
                 self.__gripper_control(
                     mode=2,
@@ -266,13 +270,19 @@ class KinovaGripperControl:
                 )
 
             else:
+
                 # Stop the gripper motion.
                 self.__gripper_control(
                     mode=2,
                     value=0.0,
                 )
 
+                self.__grasped_state = True
                 self.__activate_force_grasping = False
+
+            grasped = Bool()
+            grasped.data = self.__grasped_state
+            self.__grasped_object.publish(grasped)
 
     # # Public methods:
     def main_loop(self):

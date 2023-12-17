@@ -24,7 +24,7 @@ from kinova_positional_control.srv import (
     GripperForceGrasping,
     GripperPosition,
 )
-from Scripts.srv import TrackingState
+from Scripts.srv import UpdateState, BoolUpdate
 
 
 class KinovaTeleoperation:
@@ -64,6 +64,7 @@ class KinovaTeleoperation:
             'position': np.array([0.0, 0.0, 0.0]),
             'orientation': np.array([1.0, 0.0, 0.0, 0.0]),
         }
+        self.__has_grasped = False
         self.__gripper_state = 0
         self.__mode_button = False
 
@@ -74,6 +75,10 @@ class KinovaTeleoperation:
         self.last_gripper_state = 0
         self.__pose_tracking = False
         self.rate = rospy.Rate(10)
+
+        self.state = 0
+        self.new_target_received = False
+        self.rh_help = False
 
         # # Public variables:
         # Last commanded Relaxed IK pose is required to compensate controller
@@ -93,7 +98,7 @@ class KinovaTeleoperation:
         }
 
         self.tool_frame_position = [0, 0, 0]
-
+        self.target_relaxed_ik = [0, 0, 0]
         # # Initialization and dependency status topics:
         self.__is_initialized = False
         self.__dependency_initialized = False
@@ -125,11 +130,22 @@ class KinovaTeleoperation:
         }
 
         # # Service provider:
-        self.tracking_state_service = rospy.Service(
-            '/tracking_state_service',
-            TrackingState,
-            self.tracking_state,
+        self.change_task_state_service = rospy.Service(
+            '/change_task_state_service',
+            UpdateState,
+            self.change_state,
         )
+
+        self.update_target_service = rospy.ServiceProxy(
+            '/update_target',
+            BoolUpdate,
+        )
+
+        # self.remote_help_service = rospy.Service(
+        #     '/pause_task_service',
+        #     UpdateState,
+        #     self.pause_task_request,
+        # )
 
         # # Service subscriber:
         self.__gripper_force_grasping = rospy.ServiceProxy(
@@ -175,6 +191,12 @@ class KinovaTeleoperation:
             self.__input_pose_callback,
         )
 
+        # # Topic subscriber:
+        rospy.Subscriber(
+            f'/{self.ROBOT_NAME}/grasping',
+            Bool,
+            self.__grasping_feedback_callback,
+        )
         # rospy.Subscriber(
         #     f'/{self.ROBOT_NAME}/teleoperation/tracking',
         #     Bool,
@@ -219,22 +241,57 @@ class KinovaTeleoperation:
         self.__dependency_status['gripper_control'] = message.data
 
     # # Service handlers:
+    # def pause_task_request(self, request):
+            
+    #     self.state = 0
 
+    #     if request.state in [1, 2]:
+    #         self.rh_help = True
+            
+    #     elif request.state == 0:
+    #         self.new_target_received = True
+    #         self.rh_help = False
+
+    #     return True
+    
     # # Topic callbacks:
+    def __grasping_feedback_callback(self, message):
+
+        self.__has_grasped = message.data
+
     def __input_pose_callback(self, message):
         """
 
         """
-        if self.__pose_tracking:
-            print("Here!")
-            self.__input_pose['position'][0] = message.position.x
-            self.__input_pose['position'][1] = message.position.y
-            self.__input_pose['position'][2] = message.position.z
 
-            self.__input_pose['orientation'][0] = message.orientation.w
-            self.__input_pose['orientation'][1] = message.orientation.x
-            self.__input_pose['orientation'][2] = message.orientation.y
-            self.__input_pose['orientation'][3] = message.orientation.z
+        if self.__pose_tracking:
+            if self.state == 1:
+                self.__input_pose['position'][0] = message.position.x
+                self.__input_pose['position'][1] = message.position.y
+                self.__input_pose['position'][2] = message.position.z
+
+                self.__input_pose['orientation'][0] = message.orientation.w
+                self.__input_pose['orientation'][1] = message.orientation.x
+                self.__input_pose['orientation'][2] = message.orientation.y
+                self.__input_pose['orientation'][3] = message.orientation.z
+
+                # print(self.__input_pose['position'])
+
+
+            # print(self.__input_pose['position'])
+            elif self.state == 3:
+                self.__input_pose['position'][0] = message.position.x - 0.15
+                self.__input_pose['position'][1] = message.position.y - 0.3
+                self.__input_pose['position'][2] = 1.05
+
+        else:
+            self.__input_pose['position'][0] = self.tool_frame_position[0]
+            self.__input_pose['position'][1] = self.tool_frame_position[1]
+            self.__input_pose['position'][2] = self.tool_frame_position[2]
+
+        # print(self.target_relaxed_ik)
+        self.task_state_machine()
+
 
     # def __tracking_callback(self, message):
     #     """
@@ -243,6 +300,22 @@ class KinovaTeleoperation:
 
     #     self.__pose_tracking = message.data
 
+    def change_state(self, request):
+        
+        self.state = 0
+
+        # print(request.state)
+
+        if request.state in [1, 2, 3]:
+            self.rh_help = True
+            
+        elif request.state == 0:
+            # print("In hereee")
+            self.new_target_received = True
+            self.rh_help = False
+
+        return True
+    
     def tracking_state(self, request):
         
         self.__pose_tracking = request
@@ -251,10 +324,9 @@ class KinovaTeleoperation:
 
     def __toolframe_transform_callback(self, message):
 
-        if not self.__pose_tracking:
-            self.__input_pose['position'][0] = message.position.x
-            self.__input_pose['position'][1] = message.position.y
-            self.__input_pose['position'][2] = message.position.z
+        self.tool_frame_position[0] = message.position.x
+        self.tool_frame_position[1] = message.position.y
+        self.tool_frame_position[2] = message.position.z
 
     def __gripper_callback(self, message):
 
@@ -387,7 +459,7 @@ class KinovaTeleoperation:
         """
 
         self.input_relaxed_ik_difference['position'] = (
-            self.__input_pose['position']
+            self.tool_frame_position
             - self.last_relaxed_ik_pose['position']
         )
 
@@ -398,7 +470,12 @@ class KinovaTeleoperation:
                 ),
                 self.last_relaxed_ik_pose['orientation'],
             )
-        )
+        )        
+        
+        # print("Compensation!")
+        # print(self.__input_pose['position'])
+        # print(self.last_relaxed_ik_pose['position'])
+        # print()
 
     # # Public methods:
     def main_loop(self):
@@ -411,7 +488,6 @@ class KinovaTeleoperation:
             return
 
         if (self.last_pose_tracking != self.__pose_tracking):
-
             self.__calculate_compensation()
 
         self.last_pose_tracking = self.__pose_tracking
@@ -428,24 +504,24 @@ class KinovaTeleoperation:
 
         # Protection against 0, 0, 0 controller input values.
         # Controller loses connection, goes into a sleep mode etc.
-        if (
-            self.__input_pose['position'][0] == 0
-            and self.__input_pose['position'][1] == 0
-            and self.__input_pose['position'][2] == 0 and self.__pose_tracking
-        ):
-            # Stop tracking.
-            # self.__tracking_state_machine_state = 0
-            self.__pose_tracking = False
+        # if (
+        #     self.__input_pose['position'][0] == 0
+        #     and self.__input_pose['position'][1] == 0
+        #     and self.__input_pose['position'][2] == 0 and self.__pose_tracking
+        # ):
+        #     # Stop tracking.
+        #     # self.__tracking_state_machine_state = 0
+        #     self.__pose_tracking = False
 
-            rospy.logerr(
-                (
-                    f'/{self.ROBOT_NAME}/teleoperation: '
-                    f'\n(0, 0, 0) position while active tracking! '
-                    '\nStopped input tracking.'
-                ),
-            )
+        #     rospy.logerr(
+        #         (
+        #             f'/{self.ROBOT_NAME}/teleoperation: '
+        #             f'\n(0, 0, 0) position while active tracking! '
+        #             '\nStopped input tracking.'
+        #         ),
+        #     )
 
-            return
+        #     return
 
         compensated_input_pose = {
             'position': np.array([0.0, 0.0, 0.0]),
@@ -457,12 +533,16 @@ class KinovaTeleoperation:
             - self.input_relaxed_ik_difference['position']
         )
 
+        self.target_relaxed_ik = compensated_input_pose['position']
+
         # Protection against too big positional input changes.
         # Controller loses connection, out-of-sight, goes into a sleep mode etc.
         input_position_difference = np.linalg.norm(
             compensated_input_pose['position']
             - self.last_relaxed_ik_pose['position']
         )
+
+        # print(self.state)
 
         # if (input_position_difference > self.MAXIMUM_INPUT_CHANGE):
 
@@ -533,7 +613,12 @@ class KinovaTeleoperation:
                     )
                 )
 
+        # print(self.state)
+        # self.task_state_machine()
+
+        # print(compensated_input_pose['position'])
         waypoints = self.generate_waypoints(self.last_relaxed_ik_pose['position'], compensated_input_pose['position'], max_distance = 0.1)
+        # print(compensated_input_pose['position'])
 
         for waypoint in waypoints:
 
@@ -548,10 +633,17 @@ class KinovaTeleoperation:
             pose_message.orientation.z = compensated_input_pose['orientation'][3]
 
             self.__holorobot_pose.publish(pose_message)
+            # print(self.__pose_tracking)
 
-            if self.__pose_tracking:
+            if self.__pose_tracking:    
+                # print(compensated_input_pose['position'])
+                # print(waypoint)
+
+                # print(waypoint)
+                # print(self.last_relaxed_ik_pose['position'])
+
                 self.__kinova_pose.publish(pose_message)
-                rospy.sleep(0.03)
+                rospy.sleep(0.05)
 
         # pose_message = Pose()
         # pose_message.position.x = compensated_input_pose['position'][0]
@@ -577,25 +669,61 @@ class KinovaTeleoperation:
         
         waypoints = []
 
+        # if distance > max_distance:
+
+        #     # Determine the number of waypoints based on the desired resolution
+        #     num_waypoints = int((distance / max_distance) * 10) + 1
+
+        #     # Generate waypoints
+        #     for i in range(1, num_waypoints + 1):
+        #         ratio = i / (num_waypoints + 1)
+
+        #         intermediate_pose = [0, 0, 0]
+
+        #         intermediate_pose[0] = current_pose[0] + ratio * (target_pose[0] - current_pose[0])
+        #         intermediate_pose[1] = current_pose[1] + ratio * (target_pose[1] - current_pose[1])
+        #         intermediate_pose[2] = current_pose[2] + ratio * (target_pose[2] - current_pose[2])
+                
+        #         waypoints.append(intermediate_pose)
+
+
+        #     return waypoints
+        # else:
+        #     waypoints.append(target_pose)
+        #     # rospy.loginfo("No need to generate waypoints. The distance is within the threshold.")
+        #     return waypoints
+
         if distance > max_distance:
-            # rospy.loginfo(f"Generating waypoints because distance ({distance:.3f} m) is greater than {max_distance:.3f} m.")
 
             # Determine the number of waypoints based on the desired resolution
             num_waypoints = int((distance / max_distance) * 10) + 1
-
-            # Generate waypoints
-            for i in range(1, num_waypoints + 1):
-                ratio = i / (num_waypoints + 1)
-
-                intermediate_pose = [0, 0, 0]
-
-                intermediate_pose[0] = current_pose[0] + ratio * (target_pose[0] - current_pose[0])
-                intermediate_pose[1] = current_pose[1] + ratio * (target_pose[1] - current_pose[1])
-                intermediate_pose[2] = current_pose[2] + ratio * (target_pose[2] - current_pose[2])
+            
+            if self.state == 1:
                 
-                waypoints.append(intermediate_pose)
+                # Generate waypoints along Z-axis
+                waypoints.extend(self.generate_axis_waypoints(current_pose, target_pose, num_waypoints, axis=2))
+                
+                # Generate waypoints along Y-axis using the last commanded X position
+                halfway_pose = waypoints[-1].copy()
+                halfway_pose[0] += (target_pose[0] - current_pose[0]) / 2
 
-            # print("Waypoints!")
+                # Generate waypoints along X-axis
+                waypoints.extend(self.generate_axis_waypoints(waypoints[-1], halfway_pose, num_waypoints, axis=0))
+                
+                waypoints.extend(self.generate_axis_waypoints(waypoints[-1], target_pose, num_waypoints, axis=1))           
+
+                waypoints.extend(self.generate_axis_waypoints(waypoints[-1], target_pose, num_waypoints, axis=0))
+
+            else:
+
+                # Generate waypoints along X-axis
+                waypoints.extend(self.generate_axis_waypoints(current_pose, target_pose, num_waypoints, axis=0))
+                    
+                # Generate waypoints along Y-axis using the last commanded X position
+                waypoints.extend(self.generate_axis_waypoints(waypoints[-1], target_pose, num_waypoints, axis=1))           
+                
+                # Generate waypoints along Z-axis
+                waypoints.extend(self.generate_axis_waypoints(waypoints[-1], target_pose, num_waypoints, axis=2))
 
             return waypoints
         else:
@@ -603,7 +731,73 @@ class KinovaTeleoperation:
             # rospy.loginfo("No need to generate waypoints. The distance is within the threshold.")
             return waypoints
         
+    def generate_axis_waypoints(self,current_pose, target_pose, num_waypoints, axis):
+        waypoints = []
+        
+        for i in range(1, num_waypoints + 1):
+            ratio = i / (num_waypoints + 1)
+            intermediate_pose = current_pose.copy()
+            intermediate_pose[axis] += ratio * (target_pose[axis] - current_pose[axis])
+            waypoints.append(intermediate_pose)
+        
+        return waypoints
     
+    def task_state_machine(self):
+
+        if self.state == 0:
+            self.__pose_tracking = False
+            # print("State 0")
+
+            # print(self.new_target_received, self.rh_help)
+            if self.new_target_received and not self.rh_help:
+
+                self.__gripper_position(0.0)
+                # print("Switched to state 1!")
+                self.state = 1
+                self.__pose_tracking = True
+
+                self.new_target_received = False
+
+        # Grasping
+        elif self.state == 1:
+            # self.__pose_tracking = True
+            # Change target
+
+            # print("Tool frame", self.tool_frame_position)
+            # print("Input", self.__input_pose['position'])
+            # print(np.linalg.norm(self.tool_frame_position - self.__input_pose['position']))
+            if (np.linalg.norm(self.tool_frame_position - self.__input_pose['position'])) < 0.005:
+                
+                # print("Switched to state 2")
+                
+                # Close gripper
+                self.__gripper_force_grasping(0.0)
+                self.state = 2
+
+        # Grasp
+        elif self.state == 2:
+            # print("Grasping!")
+
+            if self.__has_grasped:
+                self.state = 3
+
+        # Placing
+        elif self.state == 3:
+            
+            # print("Placing ...")
+            
+            if (np.linalg.norm(self.tool_frame_position - self.__input_pose['position'])) < 0.005:
+                self.state = 4
+
+        # Place
+        elif self.state == 4:
+            # Open gripper
+            self.__gripper_position(0.0)
+
+            self.state = 0
+
+            self.update_target_service(True)
+
     def node_shutdown(self):
         """
         

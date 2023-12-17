@@ -4,10 +4,10 @@ import numpy as np
 import tf
 import transformations as transform
 import math
-from std_msgs.msg import (Bool, Float64MultiArray)
+from std_msgs.msg import (Bool, Float32MultiArray)
 from geometry_msgs.msg import (Pose, Point, Quaternion)
 from gopher_ros_clearcore.msg import (Position)
-
+from Scripts.srv import ConvertTargetPosition
 
 class UpdateTransforms:
 
@@ -39,6 +39,11 @@ class UpdateTransforms:
         self.rot_anchor = [0, 0, 0, 1]
         self.world_rotation_anchor = [0, 0, 0, 1]
         self.camera_tf = {
+            'position': np.array([0.0, 0.0, 0.0]),
+            'orientation': np.array([0.0, 0.0, 0.0, 1.0]),
+        }
+
+        self.chest_cam_anchor_tf = {
             'position': np.array([0.0, 0.0, 0.0]),
             'orientation': np.array([0.0, 0.0, 0.0, 1.0]),
         }
@@ -119,6 +124,28 @@ class UpdateTransforms:
             queue_size=1,
         )
 
+        self.convert_target_service = rospy.Service(
+            '/from_chest_to_anchor',
+            ConvertTargetPosition,
+            self.convert_target_position,
+        )
+
+    def convert_target_position(self, request):
+
+        transformation_matrix = transform.quaternion_matrix([self.chest_cam_anchor_tf['orientation'][3], self.chest_cam_anchor_tf['orientation'][0], self.chest_cam_anchor_tf['orientation'][1], self.chest_cam_anchor_tf['orientation'][2]])
+        transformation_matrix[:3, 3] = self.chest_cam_anchor_tf['position']
+        
+        transformation_matrix_target = transform.quaternion_matrix([1, 0, 0, 0])
+        transformation_matrix_target[:3, 3] = request.fromchest.data
+
+        anchor_to_target = np.dot(transformation_matrix, transformation_matrix_target)
+
+        translation = Float32MultiArray()
+        translation.data = anchor_to_target[:3, 3]
+
+        return translation
+
+
     def __unity_anchor_rotation_callback(self, message):
 
         self.world_rotation_anchor = [
@@ -187,6 +214,12 @@ class UpdateTransforms:
             'kortex/base_link', 'base_link'
         )
 
+        self.br.sendTransform(
+            (0.0, 0.05, 0.855 + self.chest_position),
+            (-0.5, 0.5, -0.5, 0.5), rospy.Time.now(),
+            '/chest_cam', '/base_link'
+        )
+
         # (-0.9615019, 0, -0.2747984, 0)
         self.br.sendTransform(
             self.camera_tf['position'],
@@ -209,14 +242,14 @@ class UpdateTransforms:
             (0, 0, 0, 1),
             rospy.Time.now(),
             '/target_cam',
-            '/workspace_cam',
+            self.anchor_frame,
         )
 
         try:
 
             (self.trans_tool_frame,
              self.rot_tool_frame) = self.listener.lookupTransform(
-                 self.anchor_frame, 'kortex/tool_frame', rospy.Time(0)
+                 self.anchor_frame, 'kortex/tool_frame', rospy.Time(0),
              )
             
             (self.trans_tool_base['position'],
@@ -262,6 +295,9 @@ class UpdateTransforms:
                 ),
                 self.rot_kortex_baselink,
             )
+
+            self.chest_cam_anchor_tf['position'], self.chest_cam_anchor_tf['orientation'] = self.listener.lookupTransform(self.anchor_frame, '/chest_cam', rospy.Time(0),)
+
 
         except (
             tf.LookupException, tf.ConnectivityException,

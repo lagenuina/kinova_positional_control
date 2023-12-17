@@ -497,25 +497,25 @@ class KinovaTeleoperation:
                     )
                 )
 
-        waypoints = self.generate_waypoints(self.last_relaxed_ik_pose['position'], compensated_input_pose['position'], max_distance = 0.1)
+        # waypoints = self.generate_waypoints(self.last_relaxed_ik_pose['position'], compensated_input_pose['position'], max_distance = 0.1)
 
-        for waypoint in waypoints:
+        # for waypoint in waypoints:
 
-            pose_message = Pose()
-            pose_message.position.x = waypoint[0]
-            pose_message.position.y = waypoint[1]
-            pose_message.position.z = waypoint[2]
+        pose_message = Pose()
+        pose_message.position.x = compensated_input_pose['position'][0]
+        pose_message.position.y = compensated_input_pose['position'][1]
+        pose_message.position.z = compensated_input_pose['position'][2]
 
-            pose_message.orientation.w = compensated_input_pose['orientation'][0]
-            pose_message.orientation.x = compensated_input_pose['orientation'][1]
-            pose_message.orientation.y = compensated_input_pose['orientation'][2]
-            pose_message.orientation.z = compensated_input_pose['orientation'][3]
+        pose_message.orientation.w = compensated_input_pose['orientation'][0]
+        pose_message.orientation.x = compensated_input_pose['orientation'][1]
+        pose_message.orientation.y = compensated_input_pose['orientation'][2]
+        pose_message.orientation.z = compensated_input_pose['orientation'][3]
 
-            self.__holorobot_pose.publish(pose_message)
+        self.__holorobot_pose.publish(pose_message)
 
-            if self.__pose_tracking:
-                self.__kinova_pose.publish(pose_message)
-                rospy.sleep(0.03)
+        if self.__pose_tracking:
+            self.__kinova_pose.publish(pose_message)
+            # rospy.sleep(0.03)
 
         # pose_message = Pose()
         # pose_message.position.x = compensated_input_pose['position'][0]
