@@ -6,6 +6,7 @@ import tf
 from std_msgs.msg import (Bool)
 from geometry_msgs.msg import (Pose, Point)
 
+
 class HoloLensMapping:
     """
     
@@ -177,7 +178,6 @@ class HoloLensMapping:
             tf.ExtrapolationException,
         ):
             self.rate.sleep()
-
 
     # # Private methods:
     def __check_initialization(self):
