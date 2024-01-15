@@ -25,7 +25,8 @@ from kinova_positional_control.srv import (
     GripperForceGrasping,
     GripperPosition,
 )
-from Scripts.srv import UpdateState, BoolUpdate
+from Scripts.srv import UpdateState, BoolUpdate, UpdateChest
+from gopher_ros_clearcore.msg import (Position)
 
 
 class KinovaTeleoperation:
@@ -90,6 +91,8 @@ class KinovaTeleoperation:
 
         self.__compensate_depth = False
 
+        self.chest_position = 440.0
+        self.chest_adjusted = False
         self.state = 0
         self.previous_state = 0
         self.new_target_received = False
@@ -154,6 +157,11 @@ class KinovaTeleoperation:
         self.update_target_service = rospy.ServiceProxy(
             '/update_target',
             BoolUpdate,
+        )
+
+        self.update_chest_service = rospy.ServiceProxy(
+            '/update_chest',
+            UpdateChest,
         )
 
         # self.remote_help_service = rospy.Service(
@@ -315,7 +323,8 @@ class KinovaTeleoperation:
                             0] = message.position.x - 0.15
                         self.__tray_pose['position'][
                             1] = message.position.y - 0.18
-                        self.__tray_pose['position'][2] = 1.05
+                        self.__tray_pose['position'][
+                            2] = message.position.z - 0.30
 
                         self.__input_pose['position'] = self.__tray_pose[
                             'position'].copy()
@@ -328,7 +337,11 @@ class KinovaTeleoperation:
                         self.__input_pose['position'][2] = self.__tray_pose[
                             'position'][2]
 
-            print(self.__input_pose['position'])
+                    if self.chest_position.response == 440.0:
+                        print(self.chest_position)
+                        self.__input_pose['position'][2] += 0.24
+
+            # print(self.__input_pose['position'])
 
         else:
             self.__input_pose['position'][0] = self.tool_frame_position[0]
@@ -662,14 +675,8 @@ class KinovaTeleoperation:
                                                                               ]
 
             self.__holorobot_pose.publish(pose_message)
-            # print(self.__pose_tracking)
 
             if self.__pose_tracking:
-                # print(compensated_input_pose['position'])
-                # print(waypoint)
-
-                # print(waypoint)
-                # print(self.last_relaxed_ik_pose['position'])
 
                 self.__kinova_pose.publish(pose_message)
                 rospy.sleep(0.05)
@@ -701,29 +708,6 @@ class KinovaTeleoperation:
         )
 
         waypoints = []
-
-        # if distance > max_distance:
-
-        #     # Determine the number of waypoints based on the desired resolution
-        #     num_waypoints = int((distance / max_distance) * 10) + 1
-
-        #     # Generate waypoints
-        #     for i in range(1, num_waypoints + 1):
-        #         ratio = i / (num_waypoints + 1)
-
-        #         intermediate_pose = [0, 0, 0]
-
-        #         intermediate_pose[0] = current_pose[0] + ratio * (target_pose[0] - current_pose[0])
-        #         intermediate_pose[1] = current_pose[1] + ratio * (target_pose[1] - current_pose[1])
-        #         intermediate_pose[2] = current_pose[2] + ratio * (target_pose[2] - current_pose[2])
-
-        #         waypoints.append(intermediate_pose)
-
-        #     return waypoints
-        # else:
-        #     waypoints.append(target_pose)
-        #     # rospy.loginfo("No need to generate waypoints. The distance is within the threshold.")
-        #     return waypoints
 
         if distance > max_distance:
 
@@ -816,6 +800,8 @@ class KinovaTeleoperation:
             # print(self.new_target_received, self.rh_help)
             if self.new_target_received and not self.rh_help:
 
+                self.chest_position = self.update_chest_service(True)
+
                 if self.previous_state == 3:
                     self.state = 3
 
@@ -837,8 +823,6 @@ class KinovaTeleoperation:
                 self.tool_frame_position - self.__input_pose['position']
             )
 
-            print(current_norm_value)
-
             if current_norm_value < 0.005:
 
                 # print("Switched to state 2")
@@ -854,12 +838,12 @@ class KinovaTeleoperation:
                 if self.norm_value_stable_since is None:
                     self.norm_value_stable_since = time.time()
                 elif time.time() - self.norm_value_stable_since >= 3:
-                    self.new_target_received = True
-                    self.state = 0
+                    # self.new_target_received = True
+                    # self.state = 0
 
-                    # # If the value has been stable for 3 seconds, switch to state 2
-                    # self.__gripper_force_grasping(0.0)
-                    # self.state = 2
+                    # If the value has been stable for 3 seconds, switch to state 2
+                    self.__gripper_force_grasping(0.0)
+                    self.state = 2
                     # print("HEREE")
 
             else:
@@ -873,6 +857,7 @@ class KinovaTeleoperation:
 
             if self.__has_grasped == 1:
                 self.state = 3
+                self.chest_adjusted = False
                 self.__compensate_depth = False
 
             elif self.__has_grasped == 2:
@@ -886,14 +871,28 @@ class KinovaTeleoperation:
 
         # Placing
         elif self.state == 3:
+
             current_norm_value = np.linalg.norm(
                 self.tool_frame_position - self.__input_pose['position']
             )
 
-            print(current_norm_value)
+            current_norm_value_x = np.linalg.norm(
+                self.tool_frame_position[0] - self.__input_pose['position'][0]
+            )
+
+            # # print(self.tool_frame_position)
+            # # print(self.__input_pose['position'])
+            # print(current_norm_value_x)
+
+            if current_norm_value_x < 0.03 and not self.chest_adjusted:
+
+                self.chest_position = self.update_chest_service(True)
+
+                self.chest_adjusted = True
 
             if current_norm_value < 0.005:
                 self.state = 4
+                self.chest_adjusted = False
 
             # Check if the norm value is stable
             elif current_norm_value < 0.045 and abs(
@@ -903,10 +902,8 @@ class KinovaTeleoperation:
                     self.norm_value_stable_since = time.time()
                 elif time.time() - self.norm_value_stable_since >= 3:
 
-                    self.new_target_received = True
-                    self.state = 0
-                    # print("HEREE")
-                    # self.state = 4
+                    self.state = 4
+                    self.chest_adjusted = False
 
             else:
                 self.norm_value_stable_since = None
