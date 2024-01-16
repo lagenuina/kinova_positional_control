@@ -130,6 +130,12 @@ class UpdateTransforms:
             queue_size=1,
         )
 
+        self.__tf_chest_cam_anchor_tf_pub = rospy.Publisher(
+            '/my_gen3/tf_chest_cam_anchor',
+            Pose,
+            queue_size=1,
+        )
+
         self.__tf_cart_base_pub = rospy.Publisher(
             '/my_gen3/tf_base_cart',
             Pose,
@@ -423,6 +429,17 @@ class UpdateTransforms:
         cart_base.orientation.w = self.cart_base_tf['orientation'][3]
 
         self.__tf_cart_base_pub.publish(cart_base)
+
+        cam_anchor = Pose()
+        cam_anchor.position.x = self.chest_cam_anchor_tf['position'][0]
+        cam_anchor.position.y = self.chest_cam_anchor_tf['position'][1]
+        cam_anchor.position.z = self.chest_cam_anchor_tf['position'][2]
+        cam_anchor.orientation.x = self.chest_cam_anchor_tf['orientation'][0]
+        cam_anchor.orientation.y = self.chest_cam_anchor_tf['orientation'][1]
+        cam_anchor.orientation.z = self.chest_cam_anchor_tf['orientation'][2]
+        cam_anchor.orientation.w = self.chest_cam_anchor_tf['orientation'][3]
+
+        self.__tf_chest_cam_anchor_tf_pub.publish(cam_anchor)
 
 
 if __name__ == '__main__':

@@ -291,8 +291,8 @@ class KinovaGripperControl:
                     value=0.0,
                 )
 
-                if self.__gripper_position < 90 and self.__gripper_position > 10:
-                    print(self.__gripper_position)
+                if self.__gripper_position < 90 and self.__gripper_position > 25:
+
                     # Grasped
                     self.__grasped_state = 1
                     self.__activate_force_grasping = False
