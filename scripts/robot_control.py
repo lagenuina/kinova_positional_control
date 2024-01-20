@@ -90,6 +90,7 @@ class KinovaTeleoperation:
         self.norm_value_stable_since = None
 
         self.__compensate_depth = False
+        self.__compensate_height = False
 
         self.chest_position = 440.0
         self.chest_adjusted = False
@@ -295,7 +296,7 @@ class KinovaTeleoperation:
 
                 self.__input_pose['position'][0] = message.position.x
                 self.__input_pose['position'][1] = message.position.y
-                self.__input_pose['position'][2] = message.position.z
+                self.__input_pose['position'][2] = message.position.z + 0.02
 
                 self.__input_pose['orientation'][0] = message.orientation.w
                 self.__input_pose['orientation'][1] = message.orientation.x
@@ -361,8 +362,13 @@ class KinovaTeleoperation:
                         self.__input_pose['position'][2] = self.__tray_pose[
                             'position'][2]
 
-                    if self.chest_position.response == 440.0:
+                    if self.__compensate_height:
                         self.__input_pose['position'][2] += 0.24
+
+                    print(
+                        self.__compensate_height,
+                        self.__input_pose['position'][2]
+                    )
 
         else:
             self.__input_pose['position'][0] = self.tool_frame_position[0]
@@ -696,7 +702,6 @@ class KinovaTeleoperation:
                                                                               ]
 
             self.__holorobot_pose.publish(pose_message)
-
             if self.__pose_tracking:
 
                 self.__kinova_pose.publish(pose_message)
@@ -823,7 +828,8 @@ class KinovaTeleoperation:
 
             if self.new_target_received and not self.rh_help:
 
-                self.chest_position = self.update_chest_service(True)
+                response = self.update_chest_service(True)
+                self.chest_position = response.response
 
                 if self.previous_state == 3:
                     self.state = 3
@@ -877,6 +883,9 @@ class KinovaTeleoperation:
                 self.chest_adjusted = False
                 self.__compensate_depth = False
 
+                if self.chest_position == 440.0:
+                    self.__compensate_height = True
+
             elif self.__has_grasped == 2:
                 self.__gripper_position(0.0)
 
@@ -889,9 +898,20 @@ class KinovaTeleoperation:
         # Placing
         elif self.state == 3:
 
-            current_norm_value = np.linalg.norm(
-                self.tool_frame_position - self.__input_pose['position']
-            )
+            if self.__compensate_height:
+                current_norm_value = np.linalg.norm(
+                    self.tool_frame_position - np.array(
+                        [
+                            self.__input_pose['position'][0],
+                            self.__input_pose['position'][1],
+                            self.__input_pose['position'][2] - 0.24
+                        ]
+                    )
+                )
+            else:
+                current_norm_value = np.linalg.norm(
+                    self.tool_frame_position - self.__input_pose['position']
+                )
 
             current_norm_value_x = np.linalg.norm(
                 self.tool_frame_position[0] - self.__input_pose['position'][0]
@@ -899,13 +919,15 @@ class KinovaTeleoperation:
 
             if current_norm_value_x < 0.03 and not self.chest_adjusted:
 
-                self.chest_position = self.update_chest_service(True)
+                response = self.update_chest_service(True)
+                self.chest_position = response.response
 
                 self.chest_adjusted = True
 
             if current_norm_value < 0.005:
                 self.state = 4
                 self.chest_adjusted = False
+                self.__compensate_height = False
 
             # Check if the norm value is stable
             elif current_norm_value < 0.045 and abs(
@@ -917,6 +939,7 @@ class KinovaTeleoperation:
 
                     self.state = 4
                     self.chest_adjusted = False
+                    self.__compensate_height = False
 
             else:
                 self.norm_value_stable_since = None
