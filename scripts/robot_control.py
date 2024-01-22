@@ -16,17 +16,15 @@ import numpy as np
 import time
 import transformations
 from ast import (literal_eval)
-
 from std_msgs.msg import (Bool, Int32)
-from geometry_msgs.msg import (Pose, Point)
-
-# from kortex_driver.srv import (Stop)
+from geometry_msgs.msg import (Pose)
+from kortex_driver.srv import (ApplyEmergencyStop, Base_ClearFaults)
 from kinova_positional_control.srv import (
     GripperForceGrasping,
     GripperPosition,
 )
 from Scripts.srv import UpdateState, BoolUpdate, UpdateChest
-from gopher_ros_clearcore.msg import (Position)
+from gopher_ros_clearcore.srv import (Stop)
 
 
 class KinovaTeleoperation:
@@ -86,6 +84,7 @@ class KinovaTeleoperation:
         self.__pose_tracking = False
         self.rate = rospy.Rate(10)
 
+        self.restarting = False
         self.last_norm_value = None
         self.norm_value_stable_since = None
 
@@ -118,6 +117,7 @@ class KinovaTeleoperation:
 
         self.tool_frame_position = [0, 0, 0]
         self.target_relaxed_ik = [0, 0, 0]
+
         # # Initialization and dependency status topics:
         self.__is_initialized = False
         self.__dependency_initialized = False
@@ -155,6 +155,18 @@ class KinovaTeleoperation:
             self.change_state,
         )
 
+        self.stop_task = rospy.Service(
+            f'/{self.ROBOT_NAME}/stop_task',
+            BoolUpdate,
+            self.__stop_service,
+        )
+
+        self.resume_task = rospy.Service(
+            f'/{self.ROBOT_NAME}/resume_task',
+            BoolUpdate,
+            self.__resume_service,
+        )
+
         self.update_target_service = rospy.ServiceProxy(
             '/update_target',
             BoolUpdate,
@@ -165,11 +177,20 @@ class KinovaTeleoperation:
             UpdateChest,
         )
 
-        # self.remote_help_service = rospy.Service(
-        #     '/pause_task_service',
-        #     UpdateState,
-        #     self.pause_task_request,
-        # )
+        self.estop_arm_srv = rospy.ServiceProxy(
+            f'/{self.ROBOT_NAME}/base/apply_emergency_stop',
+            ApplyEmergencyStop,
+        )
+
+        self.stop_positional_control_node = rospy.ServiceProxy(
+            f'/{self.ROBOT_NAME}/positional_control/shut_down',
+            BoolUpdate,
+        )
+
+        self.clearfaults_arm_srv = rospy.ServiceProxy(
+            f'/{self.ROBOT_NAME}/base/clear_faults',
+            Base_ClearFaults,
+        )
 
         # # Service subscriber:
         self.__gripper_force_grasping = rospy.ServiceProxy(
@@ -207,13 +228,6 @@ class KinovaTeleoperation:
         )
 
         # # Topic subscriber:
-        # Commented this
-
-        # rospy.Subscriber(
-        #     f'/{self.ROBOT_NAME}/teleoperation/input_pose',
-        #     Pose,
-        #     self.__input_pose_callback,
-        # )
 
         rospy.Subscriber(
             f'/{self.ROBOT_NAME}/tf_base_target_cam',
@@ -233,11 +247,6 @@ class KinovaTeleoperation:
             Int32,
             self.__grasping_feedback_callback,
         )
-        # rospy.Subscriber(
-        #     f'/{self.ROBOT_NAME}/teleoperation/tracking',
-        #     Bool,
-        #     self.__tracking_callback,
-        # )
 
         rospy.Subscriber(
             f'/{self.ROBOT_NAME}/teleoperation/gripper_state',
@@ -310,29 +319,6 @@ class KinovaTeleoperation:
 
                 if self.counter is not None:
 
-                    # if self.counter == 0:
-
-                    #     self.__tray_pose['position'][
-                    #         0] = message.position.x - 0.15
-                    #     self.__tray_pose['position'][
-                    #         1] = message.position.y - 0.18
-                    #     self.__tray_pose['position'][
-                    #         2] = message.position.z - 0.30
-
-                    #     self.__input_pose['position'] = self.__tray_pose[
-                    #         'position'].copy()
-
-                    # else:
-                    #     self.__input_pose['position'][0] = self.__tray_pose[
-                    #         'position'][0]
-                    #     self.__input_pose['position'][1] = self.__tray_pose[
-                    #         'position'][1] + (0.11 * self.counter)
-                    #     self.__input_pose['position'][2] = self.__tray_pose[
-                    #         'position'][2]
-
-                    # if self.chest_position.response == 440.0:
-                    #     self.__input_pose['position'][2] += 0.24
-
                     if self.counter == 0:
 
                         self.__tray_pose['position'][
@@ -365,17 +351,32 @@ class KinovaTeleoperation:
                     if self.__compensate_height:
                         self.__input_pose['position'][2] += 0.24
 
-                    print(
-                        self.__compensate_height,
-                        self.__input_pose['position'][2]
-                    )
-
         else:
             self.__input_pose['position'][0] = self.tool_frame_position[0]
             self.__input_pose['position'][1] = self.tool_frame_position[1]
             self.__input_pose['position'][2] = self.tool_frame_position[2]
 
         self.task_state_machine()
+
+    def __stop_service(self, request):
+
+        # E-stop arm motion
+        self.estop_arm_srv()
+
+        # Reset the flag
+        self.__pose_tracking = False
+
+        self.state = 0
+
+        return True
+
+    def __resume_service(self, request):
+
+        self.stop_positional_control_node(True)
+
+        self.restarting = True
+
+        return True
 
     def change_state(self, request):
 
@@ -554,6 +555,11 @@ class KinovaTeleoperation:
 
         if not self.__is_initialized:
             return
+        else:
+            if self.restarting:
+
+                self.new_target_received = True
+                self.restarting = False
 
         if (self.last_pose_tracking != self.__pose_tracking):
             self.__calculate_compensation()
@@ -569,27 +575,6 @@ class KinovaTeleoperation:
         self.last_gripper_state = self.__gripper_state
 
         self.__mode_state_machine(self.__mode_button)
-
-        # Protection against 0, 0, 0 controller input values.
-        # Controller loses connection, goes into a sleep mode etc.
-        # if (
-        #     self.__input_pose['position'][0] == 0
-        #     and self.__input_pose['position'][1] == 0
-        #     and self.__input_pose['position'][2] == 0 and self.__pose_tracking
-        # ):
-        #     # Stop tracking.
-        #     # self.__tracking_state_machine_state = 0
-        #     self.__pose_tracking = False
-
-        #     rospy.logerr(
-        #         (
-        #             f'/{self.ROBOT_NAME}/teleoperation: '
-        #             f'\n(0, 0, 0) position while active tracking! '
-        #             '\nStopped input tracking.'
-        #         ),
-        #     )
-
-        #     return
 
         compensated_input_pose = {
             'position': np.array([0.0, 0.0, 0.0]),
@@ -845,9 +830,6 @@ class KinovaTeleoperation:
         # Grasping
         elif self.state == 1:
 
-            # self.__pose_tracking = True
-            # Change target
-
             current_norm_value = np.linalg.norm(
                 self.tool_frame_position - self.__input_pose['position']
             )
@@ -989,7 +971,7 @@ def main():
     rospy.loginfo('\n\n\n\n\n')  # Add whitespaces to separate logs.
 
     # # ROS parameters:
-    # TODO: Add type check.
+
     kinova_name = rospy.get_param(
         param_name=f'{rospy.get_name()}/robot_name',
         default='my_gen3',

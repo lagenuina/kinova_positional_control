@@ -30,6 +30,7 @@ from kortex_driver.srv import (
     Base_ClearFaults,
     # ApplyEmergencyStop,
 )
+from Scripts.srv import BoolUpdate
 from kinova_positional_control.srv import (PidVelocityLimit)
 from relaxed_ik_ros1.msg import (EEPoseGoals)
 
@@ -55,6 +56,8 @@ class KinovaPositionalControl:
         # # Private constants:
 
         self.rate = rospy.Rate(5)
+
+        self.__shut_down = False
 
         # # Public constants:
         self.ROBOT_NAME = robot_name
@@ -188,6 +191,11 @@ class KinovaPositionalControl:
         }
 
         # # Service provider:
+        self.stop_positional_control_node = rospy.Service(
+            f'/{self.ROBOT_NAME}/positional_control/shut_down',
+            BoolUpdate,
+            self.__shutdown_node_service,
+        )
 
         # # Service subscriber:
         self.__pid_velocity_limit = rospy.ServiceProxy(
@@ -267,6 +275,11 @@ class KinovaPositionalControl:
         self.__dependency_status['relaxed_ik'] = msg.data
 
     # # Service handlers:
+    def __shutdown_node_service(self, request):
+
+        self.__shut_down = True
+
+        return True
 
     # # Topic callbacks:
     def __input_pose_callback(self, msg):
@@ -429,42 +442,6 @@ class KinovaPositionalControl:
 
         return pose_message
 
-    # def __check_boundaries(self, position):
-    #     """
-
-    #     """
-
-    #     # Calculate the vector from the center to the position.
-    #     vector_to_position = [
-    #         position[i] - self.WORKSPACE_CENTER[i]
-    #         for i in range(len(self.WORKSPACE_CENTER))
-    #     ]
-
-    #     # Calculate the distance from the center to the position.
-    #     distance_to_position = math.sqrt(
-    #         sum([x**2 for x in vector_to_position])
-    #     )
-
-    #     # If the position is inside the sphere, return its coordinates.
-    #     if distance_to_position <= self.WORKSPACE_RADIUS:
-    #         return position
-
-    #     # Calculate the vector from the center to the closest position on the
-    #     # sphere surface.
-    #     vector_to_surface = [
-    #         vector_to_position[i] * self.WORKSPACE_RADIUS / distance_to_position
-    #         for i in range(len(self.WORKSPACE_CENTER))
-    #     ]
-
-    #     # Calculate the coordinates of the closest position on the sphere
-    #     # surface.
-    #     closest_position = np.array(
-    #         [
-    #             self.WORKSPACE_CENTER[i] + vector_to_surface[i]
-    #             for i in range(len(self.WORKSPACE_CENTER))
-    #         ]
-    #     )
-
     #     return closest_position
 
     def __wait_for_motion(self):
@@ -591,6 +568,16 @@ class KinovaPositionalControl:
         
         """
 
+        if self.__shut_down:
+
+            rospy.signal_shutdown("Emergency Stop Command Received")
+
+            rospy.loginfo_once(
+                "\n E-Stop! Positional control node has shutdown.\n"
+            )
+
+            self.__shut_down = False
+
         self.__check_initialization()
 
         if not self.__is_homed:
@@ -617,8 +604,9 @@ class KinovaPositionalControl:
             f'/{self.ROBOT_NAME}/positional_control: node is shutting down...',
         )
 
-        # Stop the arm motion.
-        self.__stop_arm()
+        # if not self.__shutting_down:
+        #     # Stop the arm motion.
+        #     self.__stop_arm()
 
         rospy.loginfo_once(
             f'/{self.ROBOT_NAME}/positional_control: node has shut down.',
