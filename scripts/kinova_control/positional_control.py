@@ -604,9 +604,8 @@ class KinovaPositionalControl:
             f'/{self.ROBOT_NAME}/positional_control: node is shutting down...',
         )
 
-        # if not self.__shutting_down:
-        #     # Stop the arm motion.
-        #     self.__stop_arm()
+        # Stop the arm motion.
+        self.__stop_arm()
 
         rospy.loginfo_once(
             f'/{self.ROBOT_NAME}/positional_control: node has shut down.',

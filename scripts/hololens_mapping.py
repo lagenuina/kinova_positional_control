@@ -4,7 +4,8 @@ import numpy as np
 import copy
 import tf
 from std_msgs.msg import (Bool)
-from geometry_msgs.msg import (Pose, Point)
+from geometry_msgs.msg import (Pose)
+from Scripts.srv import BoolUpdate
 
 
 class HoloLensMapping:
@@ -65,8 +66,27 @@ class HoloLensMapping:
         }
 
         # # Service provider:
+        self.restart_nodes = rospy.Service(
+            f'/{self.ROBOT_NAME}/restart_nodes',
+            BoolUpdate,
+            self.__restart_nodes_service,
+        )
 
         # # Service subscriber:
+        self.stop_robot_control_node = rospy.ServiceProxy(
+            f'/{self.ROBOT_NAME}/robot_control/shut_down',
+            BoolUpdate,
+        )
+
+        self.stop_hololens_chest_node = rospy.ServiceProxy(
+            f'/{self.ROBOT_NAME}/hololens_chest/shut_down',
+            BoolUpdate,
+        )
+
+        self.stop_positional_control_node = rospy.ServiceProxy(
+            f'/{self.ROBOT_NAME}/positional_control/shut_down',
+            BoolUpdate,
+        )
 
         # # Topic publisher:
         self.__node_is_initialized = rospy.Publisher(
@@ -81,47 +101,12 @@ class HoloLensMapping:
             queue_size=1,
         )
 
-        # self.__teleoperation_tracking_button = rospy.Publisher(
-        #     f'/{self.ROBOT_NAME}/teleoperation/tracking_button',
-        #     Bool,
-        #     queue_size=1,
-        # )
-
-        # self.__tool_frame_pose = rospy.Publisher(
-        #     f'/{self.ROBOT_NAME}/tool_frame_position',
-        #     Point,
-        #     queue_size=1,
-        # )
-
-        # self.__teleoperation_gripper_button = rospy.Publisher(
-        #     f'/{self.ROBOT_NAME}/teleoperation/gripper_button',
-        #     Bool,
-        #     queue_size=1,
-        # )
-        # self.__teleoperation_mode_button = rospy.Publisher(
-        #     f'/{self.ROBOT_NAME}/teleoperation/mode_button',
-        #     Bool,
-        #     queue_size=1,
-        # )
-
         # # Topic subscriber:
         rospy.Subscriber(
             '/hologram_feedback/pose',
             Pose,
             self.__hololens_pose_callback,
         )
-
-        # rospy.Subscriber(
-        #     f'/{self.ROBOT_NAME}/teleoperation/state',
-        #     Bool,
-        #     self.__teleoperation_state_callback,
-        # )
-
-        # rospy.Subscriber(
-        #     f'/{self.ROBOT_NAME}/tf_toolframe',
-        #     Point,
-        #     self.tf_toolframe_update,
-        # )
 
     # # Dependency status callbacks:
     def __teleoperation_callback(self, message):
@@ -130,6 +115,14 @@ class HoloLensMapping:
         """
 
         self.__dependency_status['teleoperation'] = message.data
+
+    def __restart_nodes_service(self, request):
+
+        self.stop_positional_control_node(True)
+        self.stop_robot_control_node(True)
+        self.stop_hololens_chest_node(True)
+
+        return True
 
     # # Topic callbacks:
     def __hololens_pose_callback(self, message):

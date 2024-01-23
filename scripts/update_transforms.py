@@ -246,7 +246,6 @@ class UpdateTransforms:
             rospy.Time.now(), '/chest_cam', '/base_link'
         )
 
-        # (-0.9615019, 0, -0.2747984, 0)
         self.br.sendTransform(
             self.camera_tf['position'],
             self.camera_tf['orientation'],
@@ -262,14 +261,6 @@ class UpdateTransforms:
             '/cart',
             self.anchor_frame,
         )
-
-        # self.br.sendTransform(
-        #     self.camera_tf['position'],
-        #     self.camera_tf['orientation'],
-        #     rospy.Time.now(),
-        #     '/workspace_cam',
-        #     self.anchor_frame,
-        # )
 
         self.br.sendTransform(
             self.camera_target_tf,

@@ -16,6 +16,7 @@ import numpy as np
 import time
 import transformations
 from ast import (literal_eval)
+from pynput.keyboard import Key, Listener
 from std_msgs.msg import (Bool, Int32)
 from geometry_msgs.msg import (Pose)
 from kortex_driver.srv import (ApplyEmergencyStop, Base_ClearFaults)
@@ -51,6 +52,7 @@ class KinovaTeleoperation:
 
         # # Private constants:
 
+        print(convenience_compensation, tracking_mode)
         # # Public constants:
         self.ROBOT_NAME = robot_name
         self.TRACKING_MODE = tracking_mode
@@ -91,6 +93,7 @@ class KinovaTeleoperation:
         self.__compensate_depth = False
         self.__compensate_height = False
 
+        self.__shut_down = False
         self.chest_position = 440.0
         self.chest_adjusted = False
         self.state = 0
@@ -165,6 +168,12 @@ class KinovaTeleoperation:
             f'/{self.ROBOT_NAME}/resume_task',
             BoolUpdate,
             self.__resume_service,
+        )
+
+        self.stop_robot_control_node = rospy.Service(
+            f'/{self.ROBOT_NAME}/robot_control/shut_down',
+            BoolUpdate,
+            self.__shutdown_node_service,
         )
 
         self.update_target_service = rospy.ServiceProxy(
@@ -370,6 +379,12 @@ class KinovaTeleoperation:
 
         return True
 
+    def __shutdown_node_service(self, request):
+
+        self.__shut_down = True
+
+        return True
+
     def __resume_service(self, request):
 
         self.stop_positional_control_node(True)
@@ -552,6 +567,14 @@ class KinovaTeleoperation:
         
         """
         self.__check_initialization()
+
+        if self.__shut_down:
+
+            rospy.signal_shutdown("Service was called.")
+
+            rospy.loginfo_once("\n E-Stop! Robot control node has shutdown.\n")
+
+            self.__shut_down = False
 
         if not self.__is_initialized:
             return
@@ -957,6 +980,25 @@ class KinovaTeleoperation:
             f'/{self.ROBOT_NAME}/teleoperation: node has shut down.',
         )
 
+    def on_press(self, key):
+        try:
+            if key.char == 'j':
+                self.estop_arm_srv()
+
+                # Reset the flag
+                self.__pose_tracking = False
+
+                self.state = 0
+
+            elif key.char == 'k':
+
+                self.stop_positional_control_node(True)
+
+                self.restarting = True
+
+        except AttributeError:
+            pass
+
 
 def main():
     """
@@ -1010,6 +1052,10 @@ def main():
     rospy.on_shutdown(kinova_teleoperation.node_shutdown)
 
     while not rospy.is_shutdown():
+
+        # with Listener(on_press=kinova_teleoperation.on_press) as listener:
+        #     listener.join()
+
         kinova_teleoperation.main_loop()
         kinova_teleoperation.rate.sleep()
 

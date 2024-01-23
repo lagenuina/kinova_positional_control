@@ -57,7 +57,8 @@
         pkg="kinova_positional_control" 
         type="robot_control.py" 
         name="robot_control" 
-        output="screen">
+        output="screen"
+        respawn="true">
             <param 
             name="robot_name" 
             value="$(arg robot_name)"/>

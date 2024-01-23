@@ -1,0 +1,76 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- ============================ SETTINGS ============================= -->
+
+    <arg 
+    name="robot_name" 
+    default="my_gen3"/>
+
+    <arg 
+    name="anchor_id" 
+    default="431d6860-2fa7-4d18-9775-8a30c8bbc8d3"/>
+
+    <!-- default="374594eb-6114-4816-82e4-ab69f9e2961b"/> -->
+
+    <!-- If any of dependency or optional subfiles should not be launched (or
+    are launched separately) set corresponding argument to "false". -->
+    <arg 
+    name="launch_teleoperation" 
+    default="false"/>
+    <arg 
+    name="launch_autonomous" 
+    default="true"/>
+    <arg 
+    name="launch_controller_feedback" 
+    default="true"/>
+
+    <!-- ======================== END OF SETTINGS ========================== -->
+    
+    <include file="$(find gopher_ros_clearcore)/launch/hololens_chest_control.launch"/>
+
+    <!-- Teleoperation module (dependency): -->
+    <group if="$(arg launch_teleoperation)">
+        <include 
+        file="$(find kinova_positional_control)/launch/teleoperation.launch">
+            <arg 
+            name="robot_name" 
+            value="$(arg robot_name)"/>
+        </include>
+    </group>
+
+    <group if="$(arg launch_autonomous)">
+    <include 
+    file="$(find kinova_positional_control)/launch/robot_control.launch">
+        <arg 
+        name="robot_name" 
+        value="$(arg robot_name)"/>
+    </include>
+    </group>
+
+    <!-- HoloLens mapping: -->
+    <group ns="/$(arg robot_name)">
+        <node 
+        pkg="kinova_positional_control" 
+        type="hololens_mapping.py" 
+        name="hololens_mapping" 
+        output="screen">
+            <param 
+            name="robot_name" 
+            value="$(arg robot_name)"/>
+            <param 
+            name="anchor_id" 
+            value="$(arg anchor_id)"/>
+        </node>
+    </group> 
+
+    <!-- Object detector -->
+    <include 
+    file="$(find holo_project)/src/launch/object_detector.launch">
+    </include>
+
+    <!-- Robot hologram: -->
+    <!-- <include 
+    file="$(find kinova_positional_control)/launch/holorobot.launch">
+    </include> -->
+    
+</launch>
