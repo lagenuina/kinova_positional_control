@@ -3,9 +3,10 @@ import rospy
 import numpy as np
 import copy
 import tf
+from pynput.keyboard import Key, Listener
 from std_msgs.msg import (Bool)
 from geometry_msgs.msg import (Pose)
-from Scripts.srv import BoolUpdate
+from Scripts.srv import BoolUpdate, UpdateState
 
 
 class HoloLensMapping:
@@ -88,6 +89,16 @@ class HoloLensMapping:
             BoolUpdate,
         )
 
+        self.stop_task = rospy.ServiceProxy(
+            f'/{self.ROBOT_NAME}/stop_task',
+            BoolUpdate,
+        )
+
+        self.change_task_state_service = rospy.ServiceProxy(
+            '/change_task_state_service',
+            UpdateState,
+        )
+
         # # Topic publisher:
         self.__node_is_initialized = rospy.Publisher(
             f'/{self.ROBOT_NAME}/hololens_mapping/is_initialized',
@@ -120,7 +131,6 @@ class HoloLensMapping:
 
         self.stop_positional_control_node(True)
         self.stop_robot_control_node(True)
-        self.stop_hololens_chest_node(True)
 
         return True
 
@@ -296,6 +306,21 @@ class HoloLensMapping:
             f'/{self.ROBOT_NAME}/hololens_mapping: node has shut down.',
         )
 
+    def on_press(self, key):
+        try:
+            if key.char == 'j':
+                self.stop_task(True)
+
+            elif key.char == 'k':
+                self.stop_positional_control_node(True)
+                self.stop_robot_control_node(True)
+
+            elif key.char == 'l':
+                self.change_task_state_service(0)
+
+        except AttributeError:
+            pass
+
 
 def main():
     """
@@ -325,6 +350,10 @@ def main():
     rospy.on_shutdown(hololens_kinova_mapping.node_shutdown)
 
     while not rospy.is_shutdown():
+
+        with Listener(on_press=hololens_kinova_mapping.on_press) as listener:
+            listener.join()
+
         hololens_kinova_mapping.main_loop()
         hololens_kinova_mapping.rate.sleep()
 
