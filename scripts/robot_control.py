@@ -334,7 +334,7 @@ class KinovaTeleoperation:
 
                     else:
                         row_width = 0.07  # Width between medicines in a row
-                        row_height = 0.07  # Height between rows
+                        row_height = 0.04  # Height between rows
                         max_per_row = 4  # Maximum medicines per row
 
                         row = self.counter // max_per_row  # Calculate the current row
