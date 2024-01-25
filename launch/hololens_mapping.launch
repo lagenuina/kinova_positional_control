@@ -8,18 +8,13 @@
 
     <arg 
     name="anchor_id" 
-    default="431d6860-2fa7-4d18-9775-8a30c8bbc8d3"/>
+    default="1b66d0a5-f3e3-4013-b2e4-0461ad55e4bf"/>
 
     <!-- default="374594eb-6114-4816-82e4-ab69f9e2961b"/> -->
 
     <!-- If any of dependency or optional subfiles should not be launched (or
     are launched separately) set corresponding argument to "false". -->
-    <arg 
-    name="launch_teleoperation" 
-    default="false"/>
-    <arg 
-    name="launch_autonomous" 
-    default="true"/>
+
     <arg 
     name="launch_controller_feedback" 
     default="true"/>
@@ -27,37 +22,12 @@
     <!-- ======================== END OF SETTINGS ========================== -->
 
     <!-- Teleoperation module (dependency): -->
-    <group if="$(arg launch_teleoperation)">
-        <include 
-        file="$(find kinova_positional_control)/launch/teleoperation.launch">
-            <arg 
-            name="robot_name" 
-            value="$(arg robot_name)"/>
-        </include>
-    </group>
-
-    <group if="$(arg launch_autonomous)">
     <include 
-    file="$(find kinova_positional_control)/launch/robot_control.launch">
+    file="$(find kinova_positional_control)/launch/teleoperation.launch">
         <arg 
         name="robot_name" 
         value="$(arg robot_name)"/>
     </include>
-    </group>
-
-    <!-- TF updates: -->
-    <node 
-    pkg="kinova_positional_control" 
-    type="update_transforms.py" 
-    name="tf_updates" 
-    output="screen">
-        <param 
-        name="anchor_id" 
-        value="$(arg anchor_id)"/>
-        <param 
-        name="robot_name" 
-        value="$(arg robot_name)"/>
-    </node>
 
     <!-- HoloLens mapping: -->
     <group ns="/$(arg robot_name)">
@@ -74,8 +44,6 @@
             value="$(arg anchor_id)"/>
         </node>
     </group> 
-
-    <include file="$(find gopher_ros_clearcore)/launch/hololens_chest_control.launch"/>
 
     <!-- Robot hologram: -->
     <!-- <include 

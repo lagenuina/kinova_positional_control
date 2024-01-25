@@ -3,7 +3,6 @@ import rospy
 import numpy as np
 import copy
 import tf
-from pynput.keyboard import Key, Listener
 from std_msgs.msg import (Bool)
 from geometry_msgs.msg import (Pose)
 from Scripts.srv import BoolUpdate, UpdateState
@@ -67,37 +66,8 @@ class HoloLensMapping:
         }
 
         # # Service provider:
-        self.restart_nodes = rospy.Service(
-            f'/{self.ROBOT_NAME}/restart_nodes',
-            BoolUpdate,
-            self.__restart_nodes_service,
-        )
 
         # # Service subscriber:
-        self.stop_robot_control_node = rospy.ServiceProxy(
-            f'/{self.ROBOT_NAME}/robot_control/shut_down',
-            BoolUpdate,
-        )
-
-        self.stop_hololens_chest_node = rospy.ServiceProxy(
-            f'/{self.ROBOT_NAME}/hololens_chest/shut_down',
-            BoolUpdate,
-        )
-
-        self.stop_positional_control_node = rospy.ServiceProxy(
-            f'/{self.ROBOT_NAME}/positional_control/shut_down',
-            BoolUpdate,
-        )
-
-        self.stop_task = rospy.ServiceProxy(
-            f'/{self.ROBOT_NAME}/stop_task',
-            BoolUpdate,
-        )
-
-        self.change_task_state_service = rospy.ServiceProxy(
-            '/change_task_state_service',
-            UpdateState,
-        )
 
         # # Topic publisher:
         self.__node_is_initialized = rospy.Publisher(
@@ -126,13 +96,6 @@ class HoloLensMapping:
         """
 
         self.__dependency_status['teleoperation'] = message.data
-
-    def __restart_nodes_service(self, request):
-
-        self.stop_positional_control_node(True)
-        self.stop_robot_control_node(True)
-
-        return True
 
     # # Topic callbacks:
     def __hololens_pose_callback(self, message):
@@ -285,13 +248,6 @@ class HoloLensMapping:
             return
 
         self.__publish_teleoperation_pose()
-        # self.__teleoperation_tracking_button.publish(self.tracking_button)
-        # self.__teleoperation_gripper_button.publish(
-        #     self.__hololens_buttons.trigger_button
-        # )
-        # self.__teleoperation_mode_button.publish(
-        #     self.__hololens_buttons.primary_button
-        # )
 
     def node_shutdown(self):
         """
@@ -305,21 +261,6 @@ class HoloLensMapping:
         rospy.loginfo_once(
             f'/{self.ROBOT_NAME}/hololens_mapping: node has shut down.',
         )
-
-    def on_press(self, key):
-        try:
-            if key.char == 'j':
-                self.stop_task(True)
-
-            elif key.char == 'k':
-                self.stop_positional_control_node(True)
-                self.stop_robot_control_node(True)
-
-            elif key.char == 'l':
-                self.change_task_state_service(0)
-
-        except AttributeError:
-            pass
 
 
 def main():
@@ -350,9 +291,6 @@ def main():
     rospy.on_shutdown(hololens_kinova_mapping.node_shutdown)
 
     while not rospy.is_shutdown():
-
-        with Listener(on_press=hololens_kinova_mapping.on_press) as listener:
-            listener.join()
 
         hololens_kinova_mapping.main_loop()
         hololens_kinova_mapping.rate.sleep()

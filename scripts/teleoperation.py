@@ -535,8 +535,12 @@ class KinovaTeleoperation:
 
     def generate_waypoints(self, current_pose, target_pose, max_distance=0.1):
         # Check if the distance between current and target poses is greater than max_distance
-        distance = np.sqrt((current_pose[0] - target_pose[0])**2 + (current_pose[1] - target_pose[1])**2 + (current_pose[2] - target_pose[2])**2)
-        
+        distance = np.sqrt(
+            (current_pose[0] - target_pose[0])**2
+            + (current_pose[1] - target_pose[1])**2
+            + (current_pose[2] - target_pose[2])**2
+        )
+
         waypoints = []
 
         if distance > max_distance:
@@ -551,10 +555,13 @@ class KinovaTeleoperation:
 
                 intermediate_pose = [0, 0, 0]
 
-                intermediate_pose[0] = current_pose[0] + ratio * (target_pose[0] - current_pose[0])
-                intermediate_pose[1] = current_pose[1] + ratio * (target_pose[1] - current_pose[1])
-                intermediate_pose[2] = current_pose[2] + ratio * (target_pose[2] - current_pose[2])
-                
+                intermediate_pose[0] = current_pose[
+                    0] + ratio * (target_pose[0] - current_pose[0])
+                intermediate_pose[1] = current_pose[
+                    1] + ratio * (target_pose[1] - current_pose[1])
+                intermediate_pose[2] = current_pose[
+                    2] + ratio * (target_pose[2] - current_pose[2])
+
                 waypoints.append(intermediate_pose)
 
             # print("Waypoints!")
@@ -564,7 +571,6 @@ class KinovaTeleoperation:
             waypoints.append(target_pose)
             # rospy.loginfo("No need to generate waypoints. The distance is within the threshold.")
             return waypoints
-        
 
     def node_shutdown(self):
         """
