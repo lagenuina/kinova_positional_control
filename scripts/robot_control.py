@@ -73,7 +73,7 @@ class KinovaTeleoperation:
         self.counter = None
 
         self.__has_grasped = False
-        self.__gripper_state = 0
+        # self.__gripper_state = 0
         self.__mode_button = False
 
         self.__mode_state_machine_state = 0
@@ -91,6 +91,7 @@ class KinovaTeleoperation:
         self.__compensate_depth = False
         self.__compensate_height = False
 
+        self.move_medicine_bool = False
         self.__shut_down = False
         self.chest_position = 440.0
         self.chest_adjusted = False
@@ -154,6 +155,12 @@ class KinovaTeleoperation:
             '/change_task_state_service',
             UpdateState,
             self.change_state,
+        )
+
+        self.move_medicine_service = rospy.Service(
+            '/move_medicine',
+            UpdateState,
+            self.move_medicine,
         )
 
         self.stop_task = rospy.Service(
@@ -249,11 +256,11 @@ class KinovaTeleoperation:
             self.__grasping_feedback_callback,
         )
 
-        rospy.Subscriber(
-            f'/{self.ROBOT_NAME}/teleoperation/gripper_state',
-            Int32,
-            self.__gripper_callback,
-        )
+        # rospy.Subscriber(
+        #     f'/{self.ROBOT_NAME}/teleoperation/gripper_state',
+        #     Int32,
+        #     self.__gripper_callback,
+        # )
 
         rospy.Subscriber(
             f'/{self.ROBOT_NAME}/teleoperation/mode_button',
@@ -302,9 +309,10 @@ class KinovaTeleoperation:
         """
 
         if self.__pose_tracking:
+
             if self.state == 1:
 
-                self.__input_pose['position'][0] = message.position.x
+                self.__input_pose['position'][0] = message.position.x + 0.02
                 self.__input_pose['position'][1] = message.position.y
                 self.__input_pose['position'][2] = message.position.z + 0.02
 
@@ -318,39 +326,48 @@ class KinovaTeleoperation:
 
             elif self.state == 3:
 
-                if self.counter is not None:
+                if self.move_medicine_bool:
 
-                    if self.counter == 0:
+                    self.__input_pose['position'][0] = self.__tray_pose[
+                        'position'][0]
+                    self.__input_pose['position'][1] = message.position.y - 0.07
+                    self.__input_pose['position'][
+                        2] = self.__tray_pose['position'][2] - 0.12
 
-                        self.__tray_pose['position'][
-                            0] = message.position.x - 0.15
-                        self.__tray_pose['position'][
-                            1] = message.position.y - 0.35
-                        self.__tray_pose['position'][
-                            2] = message.position.z - 0.15
+                else:
+                    if self.counter is not None:
 
-                        self.__input_pose['position'] = self.__tray_pose[
-                            'position'].copy()
+                        if self.counter == 0:
 
-                    else:
-                        row_width = 0.07  # Width between medicines in a row
-                        row_height = 0.04  # Height between rows
-                        max_per_row = 4  # Maximum medicines per row
+                            self.__tray_pose['position'][
+                                0] = message.position.x - 0.15
+                            self.__tray_pose['position'][
+                                1] = message.position.y - 0.35
+                            self.__tray_pose['position'][
+                                2] = message.position.z - 0.15
 
-                        row = self.counter // max_per_row  # Calculate the current row
-                        col = self.counter % max_per_row  # Calculate the current column
+                            self.__input_pose['position'] = self.__tray_pose[
+                                'position'].copy()
 
-                        # Update the position based on row and column
+                        else:
+                            row_width = 0.07  # Width between medicines in a row
+                            row_height = 0.04  # Height between rows
+                            max_per_row = 4  # Maximum medicines per row
 
-                        self.__input_pose['position'][0] = self.__tray_pose[
-                            'position'][0] - (row * row_height)
-                        self.__input_pose['position'][1] = self.__tray_pose[
-                            'position'][1] + (col * row_width)
-                        self.__input_pose['position'][2] = self.__tray_pose[
-                            'position'][2]
+                            row = self.counter // max_per_row  # Calculate the current row
+                            col = self.counter % max_per_row  # Calculate the current column
 
-                    if self.__compensate_height:
-                        self.__input_pose['position'][2] += 0.24
+                            # Update the position based on row and column
+
+                            self.__input_pose['position'][0] = self.__tray_pose[
+                                'position'][0] - (row * row_height)
+                            self.__input_pose['position'][1] = self.__tray_pose[
+                                'position'][1] + (col * row_width)
+                            self.__input_pose['position'][2] = self.__tray_pose[
+                                'position'][2]
+
+                        if self.__compensate_height:
+                            self.__input_pose['position'][2] += 0.24
 
         else:
             self.__input_pose['position'][0] = self.tool_frame_position[0]
@@ -390,6 +407,17 @@ class KinovaTeleoperation:
 
         return True
 
+    def move_medicine(self, request):
+
+        self.state = 0
+
+        self.new_target_received = True
+        self.rh_help = False
+
+        self.move_medicine_bool = True
+
+        return True
+
     def tracking_state(self, request):
 
         self.__pose_tracking = request
@@ -402,9 +430,9 @@ class KinovaTeleoperation:
         self.tool_frame_position[1] = message.position.y
         self.tool_frame_position[2] = message.position.z
 
-    def __gripper_callback(self, message):
+    # def __gripper_callback(self, message):
 
-        self.__gripper_state = message.data
+    #     self.__gripper_state = message.data
 
     def __mode_button_callback(self, message):
         """
@@ -573,13 +601,13 @@ class KinovaTeleoperation:
 
         self.last_pose_tracking = self.__pose_tracking
 
-        if (self.last_gripper_state != self.__gripper_state):
-            if self.__gripper_state == 0:
-                self.__gripper_position(0.0)
-            elif self.__gripper_state == 1:
-                self.__gripper_force_grasping(0.0)
+        # if (self.last_gripper_state != self.__gripper_state):
+        #     if self.__gripper_state == 0:
+        #         self.__gripper_position(0.0)
+        #     elif self.__gripper_state == 1:
+        #         self.__gripper_force_grasping(0.0)
 
-        self.last_gripper_state = self.__gripper_state
+        # self.last_gripper_state = self.__gripper_state
 
         self.__mode_state_machine(self.__mode_button)
 
@@ -699,7 +727,7 @@ class KinovaTeleoperation:
                 self.__kinova_pose.publish(pose_message)
                 rospy.sleep(0.05)
 
-    def generate_waypoints(self, current_pose, target_pose, max_distance=0.1):
+    def generate_waypoints(self, current_pose, target_pose, max_distance=0.05):
 
         # Check if the distance between current and target poses is greater than max_distance
         distance = np.sqrt(
@@ -818,6 +846,8 @@ class KinovaTeleoperation:
         if self.state == 0:
             self.__pose_tracking = False
 
+            print("State 0")
+
             if self.new_target_received and not self.rh_help:
 
                 response = self.update_chest_service(True)
@@ -837,12 +867,16 @@ class KinovaTeleoperation:
         # Grasping
         elif self.state == 1:
 
+            print("State 1")
+
             current_norm_value = np.linalg.norm(
                 self.tool_frame_position - self.__input_pose['position']
             )
 
-            if current_norm_value < 0.005:
+            print(current_norm_value)
 
+            if current_norm_value < 0.005:
+                print("In here")
                 # Close gripper
                 self.__gripper_force_grasping(0.0)
                 self.state = 2
@@ -859,6 +893,8 @@ class KinovaTeleoperation:
                     self.__gripper_force_grasping(0.0)
                     self.state = 2
 
+                    print("Forced to switch")
+
             else:
                 self.norm_value_stable_since = None
 
@@ -867,7 +903,10 @@ class KinovaTeleoperation:
         # Grasp
         elif self.state == 2:
 
+            print("State 2", self.__has_grasped)
+
             if self.__has_grasped == 1:
+                print("Grasped!")
                 self.state = 3
                 self.chest_adjusted = False
                 self.__compensate_depth = False
@@ -876,6 +915,8 @@ class KinovaTeleoperation:
                     self.__compensate_height = True
 
             elif self.__has_grasped == 2:
+                print("Retry!")
+
                 self.__gripper_position(0.0)
 
                 rospy.sleep(1)
@@ -887,6 +928,7 @@ class KinovaTeleoperation:
         # Placing
         elif self.state == 3:
 
+            print("State 3!")
             if self.__compensate_height:
                 current_norm_value = np.linalg.norm(
                     self.tool_frame_position - np.array(
@@ -897,6 +939,7 @@ class KinovaTeleoperation:
                         ]
                     )
                 )
+
             else:
                 current_norm_value = np.linalg.norm(
                     self.tool_frame_position - self.__input_pose['position']
@@ -919,7 +962,7 @@ class KinovaTeleoperation:
                 self.__compensate_height = False
 
             # Check if the norm value is stable
-            elif current_norm_value < 0.045 and abs(
+            elif current_norm_value < 0.08 and abs(
                 self.last_norm_value - current_norm_value
             ) < 0.001:
                 if self.norm_value_stable_since is None:
@@ -937,12 +980,19 @@ class KinovaTeleoperation:
 
         # Place
         elif self.state == 4:
+
             # Open gripper
             self.__gripper_position(0.0)
 
             self.state = 0
 
-            self.update_target_service(True)
+            if self.move_medicine_bool:
+
+                self.rh_help = True
+                self.move_medicine_bool = False
+
+            else:
+                self.update_target_service(True)
 
         pick_and_place_state = Int32()
         pick_and_place_state.data = self.state
