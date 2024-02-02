@@ -70,6 +70,16 @@ class KinovaTeleoperation:
             'orientation': np.array([1.0, 0.0, 0.0, 0.0]),
         }
 
+        self.__target_grasped = {
+            'position': np.array([0.0, 0.0, 0.0]),
+            'orientation': np.array([1.0, 0.0, 0.0, 0.0]),
+        }
+
+        self.__target_moved = {
+            'position': np.array([0.0, 0.0, 0.0]),
+            'orientation': np.array([1.0, 0.0, 0.0, 0.0]),
+        }
+
         self.counter = None
 
         self.__has_grasped = False
@@ -84,6 +94,7 @@ class KinovaTeleoperation:
         self.__pose_tracking = False
         self.rate = rospy.Rate(10)
 
+        self.__is_remote_controlling = False
         # self.restarting = False
         self.last_norm_value = None
         self.norm_value_stable_since = None
@@ -91,6 +102,7 @@ class KinovaTeleoperation:
         self.__compensate_depth = False
         self.__compensate_height = False
 
+        self.move_to = 1
         self.move_medicine_bool = False
         self.__shut_down = False
         self.chest_position = 440.0
@@ -167,6 +179,12 @@ class KinovaTeleoperation:
             f'/{self.ROBOT_NAME}/stop_task',
             BoolUpdate,
             self.__stop_service,
+        )
+
+        self.remote_handling = rospy.Service(
+            '/remote_handling',
+            BoolUpdate,
+            self.__remote_control,
         )
 
         self.stop_robot_control_node = rospy.Service(
@@ -321,18 +339,42 @@ class KinovaTeleoperation:
                 self.__input_pose['orientation'][2] = message.orientation.y
                 self.__input_pose['orientation'][3] = message.orientation.z
 
+                self.__target_grasped['position'] = self.__input_pose['position'
+                                                                     ].copy()
+
                 if self.__compensate_depth:
                     self.__input_pose['position'][0] += 0.05
 
+            elif self.state == 2 and self.__has_grasped == 1 and self.__is_remote_controlling:
+
+                self.__input_pose['position'][
+                    0] = self.__target_grasped['position'][0] - 0.2
+                self.__input_pose['position'][1] = self.__target_grasped[
+                    'position'][1]
+                self.__input_pose['position'][2] = self.__target_grasped[
+                    'position'][2]
+
             elif self.state == 3:
 
-                if self.move_medicine_bool:
+                if self.move_medicine_bool and self.move_to in [2, 3]:
 
-                    self.__input_pose['position'][0] = self.__tray_pose[
-                        'position'][0]
-                    self.__input_pose['position'][1] = message.position.y - 0.07
-                    self.__input_pose['position'][
-                        2] = self.__tray_pose['position'][2] - 0.12
+                    if self.move_to == 3:
+                        self.__input_pose['position'][0] = self.__tray_pose[
+                            'position'][0]
+                        self.__input_pose['position'][
+                            1] = message.position.y - 0.08
+                        self.__input_pose['position'][
+                            2] = self.__tray_pose['position'][2] - 0.12
+
+                    elif self.move_to == 2:
+                        self.__input_pose['position'][
+                            0] = message.position.x - 0.10
+                        self.__input_pose['position'][1] = message.position.y
+                        self.__input_pose['position'][
+                            2] = message.position.z + 0.02
+
+                        self.__target_moved['position'] = self.__input_pose[
+                            'position'].copy()
 
                 else:
                     if self.counter is not None:
@@ -366,8 +408,16 @@ class KinovaTeleoperation:
                             self.__input_pose['position'][2] = self.__tray_pose[
                                 'position'][2]
 
-                        if self.__compensate_height:
-                            self.__input_pose['position'][2] += 0.24
+                if self.__compensate_height:
+                    self.__input_pose['position'][2] += 0.24
+
+            elif self.state == 4 and self.__is_remote_controlling and self.move_to == 2:
+                self.__input_pose['position'][
+                    0] = self.__target_moved['position'][0] - 0.15
+                self.__input_pose['position'][1] = self.__target_moved[
+                    'position'][1]
+                self.__input_pose['position'][2] = self.__target_moved[
+                    'position'][2]
 
         else:
             self.__input_pose['position'][0] = self.tool_frame_position[0]
@@ -385,6 +435,12 @@ class KinovaTeleoperation:
         self.__pose_tracking = False
 
         self.state = 0
+
+        return True
+
+    def __remote_control(self, request):
+
+        self.__is_remote_controlling = request.data
 
         return True
 
@@ -409,10 +465,12 @@ class KinovaTeleoperation:
 
     def move_medicine(self, request):
 
-        self.state = 0
+        # self.state = 0
 
-        self.new_target_received = True
-        self.rh_help = False
+        # self.new_target_received = True
+        # self.rh_help = False
+
+        self.move_to = request.state
 
         self.move_medicine_bool = True
 
@@ -798,26 +856,50 @@ class KinovaTeleoperation:
                     )
             else:
 
-                # Generate waypoints along X-axis
-                waypoints.extend(
-                    self.generate_axis_waypoints(
-                        current_pose, target_pose, num_waypoints, axis=0
-                    )
-                )
+                if self.move_to == 2:
 
-                # Generate waypoints along Y-axis using the last commanded X position
-                waypoints.extend(
-                    self.generate_axis_waypoints(
-                        waypoints[-1], target_pose, num_waypoints, axis=1
+                    # Generate waypoints along Y-axis using the last commanded X position
+                    waypoints.extend(
+                        self.generate_axis_waypoints(
+                            current_pose, target_pose, num_waypoints, axis=1
+                        )
                     )
-                )
 
-                # Generate waypoints along Z-axis
-                waypoints.extend(
-                    self.generate_axis_waypoints(
-                        waypoints[-1], target_pose, num_waypoints, axis=2
+                    # Generate waypoints along Z-axis
+                    waypoints.extend(
+                        self.generate_axis_waypoints(
+                            waypoints[-1], target_pose, num_waypoints, axis=2
+                        )
                     )
-                )
+
+                    # Generate waypoints along X-axis
+                    waypoints.extend(
+                        self.generate_axis_waypoints(
+                            waypoints[-1], target_pose, num_waypoints, axis=0
+                        )
+                    )
+
+                else:
+                    # Generate waypoints along X-axis
+                    waypoints.extend(
+                        self.generate_axis_waypoints(
+                            current_pose, target_pose, num_waypoints, axis=0
+                        )
+                    )
+
+                    # Generate waypoints along Y-axis using the last commanded X position
+                    waypoints.extend(
+                        self.generate_axis_waypoints(
+                            waypoints[-1], target_pose, num_waypoints, axis=1
+                        )
+                    )
+
+                    # Generate waypoints along Z-axis
+                    waypoints.extend(
+                        self.generate_axis_waypoints(
+                            waypoints[-1], target_pose, num_waypoints, axis=2
+                        )
+                    )
 
             return waypoints
         else:
@@ -844,9 +926,8 @@ class KinovaTeleoperation:
         self.previous_state = self.state
 
         if self.state == 0:
-            self.__pose_tracking = False
 
-            print("State 0")
+            self.__pose_tracking = False
 
             if self.new_target_received and not self.rh_help:
 
@@ -867,16 +948,11 @@ class KinovaTeleoperation:
         # Grasping
         elif self.state == 1:
 
-            print("State 1")
-
             current_norm_value = np.linalg.norm(
                 self.tool_frame_position - self.__input_pose['position']
             )
 
-            print(current_norm_value)
-
             if current_norm_value < 0.005:
-                print("In here")
                 # Close gripper
                 self.__gripper_force_grasping(0.0)
                 self.state = 2
@@ -893,8 +969,6 @@ class KinovaTeleoperation:
                     self.__gripper_force_grasping(0.0)
                     self.state = 2
 
-                    print("Forced to switch")
-
             else:
                 self.norm_value_stable_since = None
 
@@ -903,19 +977,26 @@ class KinovaTeleoperation:
         # Grasp
         elif self.state == 2:
 
-            print("State 2", self.__has_grasped)
-
             if self.__has_grasped == 1:
-                print("Grasped!")
-                self.state = 3
-                self.chest_adjusted = False
-                self.__compensate_depth = False
+
+                if not self.__is_remote_controlling:
+                    self.state = 3
+                    self.chest_adjusted = False
+                    self.__compensate_depth = False
+
+                else:
+
+                    if self.move_medicine_bool:
+
+                        self.state = 3
+                        self.chest_adjusted = False
+                        self.__compensate_depth = False
 
                 if self.chest_position == 440.0:
+
                     self.__compensate_height = True
 
             elif self.__has_grasped == 2:
-                print("Retry!")
 
                 self.__gripper_position(0.0)
 
@@ -928,17 +1009,31 @@ class KinovaTeleoperation:
         # Placing
         elif self.state == 3:
 
-            print("State 3!")
+            same_shelf = False
+
             if self.__compensate_height:
-                current_norm_value = np.linalg.norm(
-                    self.tool_frame_position - np.array(
-                        [
-                            self.__input_pose['position'][0],
-                            self.__input_pose['position'][1],
-                            self.__input_pose['position'][2] - 0.24
-                        ]
+
+                if self.move_to == 2 and abs(
+                    self.__target_grasped['position'][2]
+                    - self.__target_moved['position'][2]
+                ) < 0.10:
+
+                    current_norm_value = np.linalg.norm(
+                        self.tool_frame_position - self.__input_pose['position']
                     )
-                )
+
+                    same_shelf = True
+                else:
+
+                    current_norm_value = np.linalg.norm(
+                        self.tool_frame_position - np.array(
+                            [
+                                self.__input_pose['position'][0],
+                                self.__input_pose['position'][1],
+                                self.__input_pose['position'][2] - 0.24
+                            ]
+                        )
+                    )
 
             else:
                 current_norm_value = np.linalg.norm(
@@ -951,12 +1046,14 @@ class KinovaTeleoperation:
 
             if current_norm_value_x < 0.03 and not self.chest_adjusted:
 
-                response = self.update_chest_service(True)
-                self.chest_position = response.response
+                if not same_shelf:
+                    response = self.update_chest_service(True)
+                    self.chest_position = response.response
 
                 self.chest_adjusted = True
 
             if current_norm_value < 0.005:
+
                 self.state = 4
                 self.chest_adjusted = False
                 self.__compensate_height = False
@@ -984,15 +1081,29 @@ class KinovaTeleoperation:
             # Open gripper
             self.__gripper_position(0.0)
 
-            self.state = 0
+            current_norm_value = np.linalg.norm(
+                self.tool_frame_position - self.__input_pose['position']
+            )
 
-            if self.move_medicine_bool:
+            if self.move_to in [1, 2, 3]:
 
                 self.rh_help = True
                 self.move_medicine_bool = False
 
+                if self.move_to == 1:
+                    self.update_target_service(True)
+                    self.__is_remote_controlling = False
+
+                    self.move_to = 0
+                    self.state = 0
+
+                if self.move_to in [2, 3] and current_norm_value < 0.08:
+                    self.state = 0
+
             else:
                 self.update_target_service(True)
+                self.move_to = 0
+                self.state = 0
 
         pick_and_place_state = Int32()
         pick_and_place_state.data = self.state

@@ -66,7 +66,7 @@ class UpdateTransforms:
 
         self.__tf_toolframe_anchor = rospy.Publisher(
             f'/{self.ROBOT_NAME}/tf_toolframe',
-            Pose,
+            Point,
             queue_size=1,
         )
 
@@ -288,9 +288,11 @@ class UpdateTransforms:
 
             self.rate.sleep()
 
-        anchor_to_tool_frame = self.__compose_pose_message(
-            self.anchor_tool_frame_tf
-        )
+        anchor_to_tool_frame = Point()
+        anchor_to_tool_frame.x = self.anchor_tool_frame_tf['position'][0]
+        anchor_to_tool_frame.y = self.anchor_tool_frame_tf['position'][1]
+        anchor_to_tool_frame.z = self.anchor_tool_frame_tf['position'][2]
+
         self.__tf_toolframe_anchor.publish(anchor_to_tool_frame)
 
         anchor_to_kortex_base = self.__compose_pose_message(

@@ -360,8 +360,11 @@ def main():
 
     rospy.on_shutdown(gripper_control.node_shutdown)
 
+    node_rate = rospy.Rate(100)
+
     while not rospy.is_shutdown():
         gripper_control.main_loop()
+        node_rate.sleep()
 
 
 if __name__ == '__main__':
