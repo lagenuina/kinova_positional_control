@@ -7,6 +7,7 @@ from pynput.keyboard import Key, Listener
 from std_msgs.msg import (Bool)
 from geometry_msgs.msg import (Pose)
 from Scripts.srv import BoolUpdate, UpdateState
+from std_srvs.srv import Empty
 
 
 class HoloLensMapping:
@@ -97,6 +98,20 @@ class HoloLensMapping:
         self.change_task_state_service = rospy.ServiceProxy(
             '/change_task_state_service',
             UpdateState,
+        )
+
+        self.resume_recording = rospy.ServiceProxy(
+            '/data_writer/resume_recording',
+            Empty,
+        )
+
+        self.pause_recording = rospy.ServiceProxy(
+            '/data_writer/pause_recording',
+            Empty,
+        )
+
+        self.stop_recording = rospy.ServiceProxy(
+            '/data_writer/finish_recording', Empty
         )
 
         # # Topic publisher:
@@ -306,16 +321,20 @@ class HoloLensMapping:
             f'/{self.ROBOT_NAME}/hololens_mapping: node has shut down.',
         )
 
+        self.stop_recording()
+
     def on_press(self, key):
         try:
             if key.char == 'j':
                 self.stop_task(True)
+                self.pause_recording()
 
             elif key.char == 'k':
                 self.stop_positional_control_node(True)
                 self.stop_robot_control_node(True)
 
             elif key.char == 'l':
+                self.resume_recording()
                 self.change_task_state_service(0)
 
         except AttributeError:

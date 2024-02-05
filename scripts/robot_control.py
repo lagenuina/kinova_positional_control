@@ -368,10 +368,10 @@ class KinovaTeleoperation:
 
                     elif self.move_to == 2:
                         self.__input_pose['position'][
-                            0] = message.position.x - 0.10
+                            0] = message.position.x - 0.08
                         self.__input_pose['position'][1] = message.position.y
                         self.__input_pose['position'][
-                            2] = message.position.z + 0.02
+                            2] = message.position.z + 0.05
 
                         self.__target_moved['position'] = self.__input_pose[
                             'position'].copy()
