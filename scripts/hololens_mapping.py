@@ -19,6 +19,7 @@ class HoloLensMapping:
         self,
         anchor_id,
         robot_name,
+        task,
     ):
         """
         
@@ -29,7 +30,8 @@ class HoloLensMapping:
         # # Public constants:
         self.ROBOT_NAME = robot_name
         self.anchor_id = anchor_id
-
+        self.task = task
+        print(task)
         self.listener = tf.TransformListener()
         self.br = tf.TransformBroadcaster()
         self.rate = rospy.Rate(5)
@@ -100,19 +102,38 @@ class HoloLensMapping:
             UpdateState,
         )
 
-        self.resume_recording = rospy.ServiceProxy(
-            '/data_writer/resume_recording',
-            Empty,
-        )
+        if self.task == 'study':
+            rospy.wait_for_service('/data_writer/resume_recording')
 
-        self.pause_recording = rospy.ServiceProxy(
-            '/data_writer/pause_recording',
-            Empty,
-        )
+            self.resume_image_recording = rospy.ServiceProxy(
+                '/chest_cam/image_writer/resume_recording',
+                Empty,
+            )
 
-        self.stop_recording = rospy.ServiceProxy(
-            '/data_writer/finish_recording', Empty
-        )
+            self.pause_image_recording = rospy.ServiceProxy(
+                '/chest_cam/image_writer/pause_recording',
+                Empty,
+            )
+
+            self.stop_image_recording = rospy.ServiceProxy(
+                '/chest_cam/image_writer/finish_recording',
+                Empty,
+            )
+
+            self.resume_recording = rospy.ServiceProxy(
+                '/data_writer/resume_recording',
+                Empty,
+            )
+
+            self.pause_recording = rospy.ServiceProxy(
+                '/data_writer/pause_recording',
+                Empty,
+            )
+
+            self.stop_recording = rospy.ServiceProxy(
+                '/data_writer/finish_recording',
+                Empty,
+            )
 
         # # Topic publisher:
         self.__node_is_initialized = rospy.Publisher(
@@ -321,20 +342,29 @@ class HoloLensMapping:
             f'/{self.ROBOT_NAME}/hololens_mapping: node has shut down.',
         )
 
-        self.stop_recording()
+        if self.task == 'study':
+            self.stop_recording()
+            self.stop_image_recording()
 
     def on_press(self, key):
         try:
             if key.char == 'j':
                 self.stop_task(True)
-                self.pause_recording()
+
+                if self.task == 'study':
+                    self.pause_recording()
+                    self.pause_image_recording()
 
             elif key.char == 'k':
                 self.stop_positional_control_node(True)
                 self.stop_robot_control_node(True)
 
             elif key.char == 'l':
-                self.resume_recording()
+
+                if self.task == 'study':
+                    self.resume_recording()
+                    self.resume_image_recording()
+
                 self.change_task_state_service(0)
 
         except AttributeError:
@@ -361,9 +391,15 @@ def main():
 
     anchor_id = rospy.get_param(param_name=f'{rospy.get_name()}/anchor_id')
 
+    task = rospy.get_param(
+        param_name=f'{rospy.get_name()}/task',
+        default='study',
+    )
+
     hololens_kinova_mapping = HoloLensMapping(
         robot_name=kinova_name,
         anchor_id=anchor_id,
+        task=task,
     )
 
     rospy.on_shutdown(hololens_kinova_mapping.node_shutdown)

@@ -300,64 +300,16 @@ class UpdateTransforms:
         )
         self.__tf_baselink_anchor.publish(anchor_to_kortex_base)
 
-        # base_to_toolframe = Pose()
-        # base_to_toolframe.position.x = self.trans_tool_base['position'][0]
-        # base_to_toolframe.position.y = self.trans_tool_base['position'][1]
-        # base_to_toolframe.position.z = self.trans_tool_base['position'][2]
-        # base_to_toolframe.orientation.x = self.trans_tool_base['orientation'][0]
-        # base_to_toolframe.orientation.y = self.trans_tool_base['orientation'][1]
-        # base_to_toolframe.orientation.z = self.trans_tool_base['orientation'][2]
-        # base_to_toolframe.orientation.w = self.trans_tool_base['orientation'][3]
-
         base_to_toolframe = self.__compose_pose_message(self.trans_tool_base)
         self.__tf_baselink_toolframe.publish(base_to_toolframe)
-
-        # target_cam_position = Pose()
-        # target_cam_position.position.x = self.target_cam_anchor_tf['position'][0
-        #                                                                       ]
-        # target_cam_position.position.y = self.target_cam_anchor_tf['position'][1
-        #                                                                       ]
-        # target_cam_position.position.z = self.target_cam_anchor_tf['position'][2
-        #                                                                       ]
-        # target_cam_position.orientation.x = self.target_cam_anchor_tf[
-        #     'orientation'][0]
-        # target_cam_position.orientation.y = self.target_cam_anchor_tf[
-        #     'orientation'][1]
-        # target_cam_position.orientation.z = self.target_cam_anchor_tf[
-        #     'orientation'][2]
-        # target_cam_position.orientation.w = self.target_cam_anchor_tf[
-        #     'orientation'][3]
-        # self.__tf_target_camera_pub.publish(target_cam_position)
 
         anchor_to_target = self.__compose_pose_message(
             self.target_cam_anchor_tf
         )
         self.__tf_target_camera_pub.publish(anchor_to_target)
 
-        # target_cam_base = Pose()
-        # target_cam_base.position.x = self.target_cam_base_tf['position'][0]
-        # target_cam_base.position.y = self.target_cam_base_tf['position'][1]
-        # target_cam_base.position.z = self.target_cam_base_tf['position'][2]
-        # target_cam_base.orientation.x = self.target_cam_base_tf['orientation'][0
-        #                                                                       ]
-        # target_cam_base.orientation.y = self.target_cam_base_tf['orientation'][1
-        #                                                                       ]
-        # target_cam_base.orientation.z = self.target_cam_base_tf['orientation'][2
-        #                                                                       ]
-        # target_cam_base.orientation.w = self.target_cam_base_tf['orientation'][3
-        #                                                                       ]
-
         target_to_base = self.__compose_pose_message(self.target_cam_base_tf)
         self.__tf_target_camera_base_pub.publish(target_to_base)
-
-        # cam_anchor = Pose()
-        # cam_anchor.position.x = self.chest_cam_anchor_tf['position'][0]
-        # cam_anchor.position.y = self.chest_cam_anchor_tf['position'][1]
-        # cam_anchor.position.z = self.chest_cam_anchor_tf['position'][2]
-        # cam_anchor.orientation.x = self.chest_cam_anchor_tf['orientation'][0]
-        # cam_anchor.orientation.y = self.chest_cam_anchor_tf['orientation'][1]
-        # cam_anchor.orientation.z = self.chest_cam_anchor_tf['orientation'][2]
-        # cam_anchor.orientation.w = self.chest_cam_anchor_tf['orientation'][3]
 
         cam_to_anchor = self.__compose_pose_message(self.chest_cam_anchor_tf)
         self.__tf_chest_cam_anchor_tf_pub.publish(cam_to_anchor)

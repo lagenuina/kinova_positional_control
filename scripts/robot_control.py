@@ -83,7 +83,7 @@ class KinovaTeleoperation:
         self.counter = None
 
         self.__has_grasped = False
-        # self.__gripper_state = 0
+        self.on_startup = True
         self.__mode_button = False
 
         self.__mode_state_machine_state = 0
@@ -345,14 +345,17 @@ class KinovaTeleoperation:
                 if self.__compensate_depth:
                     self.__input_pose['position'][0] += 0.05
 
+                if self.chest_position == 440:
+                    self.__input_pose['position'][2] -= 0.02
+
             elif self.state == 2 and self.__has_grasped == 1 and self.__is_remote_controlling:
 
                 self.__input_pose['position'][
                     0] = self.__target_grasped['position'][0] - 0.2
                 self.__input_pose['position'][1] = self.__target_grasped[
                     'position'][1]
-                self.__input_pose['position'][2] = self.__target_grasped[
-                    'position'][2]
+                self.__input_pose['position'][
+                    2] = self.__target_grasped['position'][2] + 0.03
 
             elif self.state == 3:
 
@@ -379,7 +382,7 @@ class KinovaTeleoperation:
                 else:
                     if self.counter is not None:
 
-                        if self.counter == 0:
+                        if self.counter == 0 or self.on_startup:
 
                             self.__tray_pose['position'][
                                 0] = message.position.x - 0.15
@@ -390,6 +393,8 @@ class KinovaTeleoperation:
 
                             self.__input_pose['position'] = self.__tray_pose[
                                 'position'].copy()
+
+                            self.on_startup = False
 
                         else:
                             row_width = 0.07  # Width between medicines in a row
@@ -458,17 +463,14 @@ class KinovaTeleoperation:
             self.rh_help = True
 
         elif request.state == 0:
+            self.update_chest_service()
+
             self.new_target_received = True
             self.rh_help = False
 
         return True
 
     def move_medicine(self, request):
-
-        # self.state = 0
-
-        # self.new_target_received = True
-        # self.rh_help = False
 
         self.move_to = request.state
 
@@ -803,7 +805,7 @@ class KinovaTeleoperation:
 
             if self.state == 1:
 
-                if self.counter == 0:
+                if self.counter == 0 or self.on_startup:
                     # Generate waypoints along Z-axis
                     waypoints.extend(
                         self.generate_axis_waypoints(
@@ -833,6 +835,7 @@ class KinovaTeleoperation:
                             waypoints[-1], target_pose, num_waypoints, axis=0
                         )
                     )
+
                 else:
                     # Generate waypoints along X-axis
                     waypoints.extend(
@@ -958,9 +961,11 @@ class KinovaTeleoperation:
                 self.state = 2
 
             # Check if the norm value is stable
-            elif current_norm_value < 0.045 and abs(
+            elif current_norm_value < 0.1 and abs(
                 self.last_norm_value - current_norm_value
             ) < 0.01:
+
+                print(current_norm_value)
                 if self.norm_value_stable_since is None:
                     self.norm_value_stable_since = time.time()
                 elif time.time() - self.norm_value_stable_since >= 3:
@@ -978,6 +983,8 @@ class KinovaTeleoperation:
         elif self.state == 2:
 
             if self.__has_grasped == 1:
+
+                rospy.sleep(1)
 
                 if not self.__is_remote_controlling:
                     self.state = 3

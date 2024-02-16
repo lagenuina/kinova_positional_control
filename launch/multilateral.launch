@@ -10,6 +10,14 @@
     name="anchor_id" 
     default="431d6860-2fa7-4d18-9775-8a30c8bbc8d3"/>
 
+    <arg 
+    name="task" 
+    default="study"/>
+
+    <arg 
+    name="call_local"
+    default="fixed"/>
+
     <!-- default="374594eb-6114-4816-82e4-ab69f9e2961b"/> -->
 
     <!-- If any of dependency or optional subfiles should not be launched (or
@@ -60,17 +68,47 @@
             <param 
             name="anchor_id" 
             value="$(arg anchor_id)"/>
+            <param 
+            name="task" 
+            value="$(arg task)"/>
         </node>
     </group> 
 
     <!-- Object detector -->
-    <include 
+    <!-- <include 
     file="$(find holo_project)/src/launch/object_detector.launch">
-    </include>
+        <param 
+        name="task" 
+        value="$(arg task)"/>
+    </include> -->
 
     <!-- Robot hologram: -->
     <!-- <include 
     file="$(find kinova_positional_control)/launch/holorobot.launch">
     </include> -->
     
+    <node 
+    pkg="holo_project" 
+    type="object_tracker.py" 
+    name="interface" 
+    output="screen">
+    </node>
+
+    <node 
+    pkg="holo_project" 
+    type="rh_interface_image.py" 
+    name="rh_interface" 
+    output="screen">
+    </node>
+
+    <node 
+    pkg="holo_project" 
+    type="read_from_csv.py" 
+    name="csv_reader_node" 
+    output="screen">
+        <param 
+        name="task" 
+        value="$(arg task)"/>
+    </node>
+
 </launch>
