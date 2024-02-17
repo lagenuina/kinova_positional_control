@@ -15,8 +15,8 @@
     default="study"/>
 
     <arg 
-    name="call_local"
-    default="fixed"/>
+    name="freeform"
+    default="true"/>
 
     <!-- default="374594eb-6114-4816-82e4-ab69f9e2961b"/> -->
 
@@ -87,12 +87,23 @@
     file="$(find kinova_positional_control)/launch/holorobot.launch">
     </include> -->
     
-    <node 
-    pkg="holo_project" 
-    type="object_tracker.py" 
-    name="interface" 
-    output="screen">
-    </node>
+    <group if="$(arg freeform)">
+        <node 
+        pkg="holo_project" 
+        type="object_tracker.py" 
+        name="interface" 
+        output="screen">
+        </node>
+    </group> 
+
+    <group unless="$(arg freeform)">
+        <node 
+        pkg="holo_project" 
+        type="object_tracker_fixed_local.py" 
+        name="interface" 
+        output="screen">
+        </node>
+    </group> 
 
     <node 
     pkg="holo_project" 

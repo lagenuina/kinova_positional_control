@@ -965,7 +965,6 @@ class KinovaTeleoperation:
                 self.last_norm_value - current_norm_value
             ) < 0.01:
 
-                print(current_norm_value)
                 if self.norm_value_stable_since is None:
                     self.norm_value_stable_since = time.time()
                 elif time.time() - self.norm_value_stable_since >= 3:
