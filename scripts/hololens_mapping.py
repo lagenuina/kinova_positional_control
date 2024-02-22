@@ -31,7 +31,6 @@ class HoloLensMapping:
         self.ROBOT_NAME = robot_name
         self.anchor_id = anchor_id
         self.task = task
-        print(task)
         self.listener = tf.TransformListener()
         self.br = tf.TransformBroadcaster()
         self.rate = rospy.Rate(5)
@@ -348,18 +347,19 @@ class HoloLensMapping:
 
     def on_press(self, key):
         try:
-            if key.char == 'j':
-                self.stop_task(True)
+            if key == Key.f5:
 
                 if self.task == 'study':
                     self.pause_recording()
                     self.pause_image_recording()
 
-            elif key.char == 'k':
+                self.stop_task(True)
+
+            elif key == Key.f6:
                 self.stop_positional_control_node(True)
                 self.stop_robot_control_node(True)
 
-            elif key.char == 'l':
+            elif key == Key.f7:
 
                 if self.task == 'study':
                     self.resume_recording()

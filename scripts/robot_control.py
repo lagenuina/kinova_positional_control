@@ -17,6 +17,7 @@ import time
 import transformations
 from ast import (literal_eval)
 from std_msgs.msg import (Bool, Int32)
+from std_srvs.srv import Empty
 from geometry_msgs.msg import (Pose)
 from kortex_driver.srv import (ApplyEmergencyStop, Base_ClearFaults)
 from kinova_positional_control.srv import (
@@ -167,6 +168,12 @@ class KinovaTeleoperation:
             '/change_task_state_service',
             UpdateState,
             self.change_state,
+        )
+
+        self.update_task_state = rospy.Service(
+            '/update_task_state',
+            Empty,
+            self.update_state,
         )
 
         self.move_medicine_service = rospy.Service(
@@ -469,6 +476,17 @@ class KinovaTeleoperation:
             self.rh_help = False
 
         return True
+
+    def update_state(self, request):
+
+        self.__gripper_force_grasping(0.0)
+
+        if self.state == 4:
+            self.state = 0
+        else:
+            self.state += 1
+
+        return []
 
     def move_medicine(self, request):
 
@@ -983,6 +1001,8 @@ class KinovaTeleoperation:
 
             if self.__has_grasped == 1:
 
+                # self.grasped = 1
+
                 rospy.sleep(1)
 
                 if not self.__is_remote_controlling:
@@ -1114,6 +1134,7 @@ class KinovaTeleoperation:
         pick_and_place_state = Int32()
         pick_and_place_state.data = self.state
         self.__robot_pick_and_place.publish(pick_and_place_state)
+
 
     def node_shutdown(self):
         """
