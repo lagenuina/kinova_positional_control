@@ -26,14 +26,14 @@ class HoloLensMapping:
         """
 
         # # Private constants:
+        self.__LISTENER = tf.TransformListener()
+        self.__BR = tf.TransformBroadcaster()
 
         # # Public constants:
         self.ROBOT_NAME = robot_name
-        self.anchor_id = anchor_id
-        self.task = task
-        self.listener = tf.TransformListener()
-        self.br = tf.TransformBroadcaster()
-        self.rate = rospy.Rate(5)
+        self.ANCHOR_ID = anchor_id
+        self.TASK = task
+        self.RATE = rospy.Rate(5)
 
         # # Private variables:
         self.__input_pose = {
@@ -43,7 +43,6 @@ class HoloLensMapping:
 
         # # Public variables:
         self.is_initialized = True
-        # self.tracking_button = False
 
         # # Initialization and dependency status topics:
         self.__is_initialized = False
@@ -69,67 +68,63 @@ class HoloLensMapping:
         }
 
         # # Service provider:
-        self.restart_nodes = rospy.Service(
+        rospy.Service(
             f'/{self.ROBOT_NAME}/restart_nodes',
             BoolUpdate,
             self.__restart_nodes_service,
         )
 
         # # Service subscriber:
-        self.stop_robot_control_node = rospy.ServiceProxy(
+        self.__stop_robot_control_node = rospy.ServiceProxy(
             f'/{self.ROBOT_NAME}/robot_control/shut_down',
             BoolUpdate,
         )
 
-        self.stop_hololens_chest_node = rospy.ServiceProxy(
-            f'/{self.ROBOT_NAME}/hololens_chest/shut_down',
-            BoolUpdate,
-        )
-
-        self.stop_positional_control_node = rospy.ServiceProxy(
+        self.__stop_positional_control_node = rospy.ServiceProxy(
             f'/{self.ROBOT_NAME}/positional_control/shut_down',
             BoolUpdate,
         )
 
-        self.stop_task = rospy.ServiceProxy(
+        self.__stop_task = rospy.ServiceProxy(
             f'/{self.ROBOT_NAME}/stop_task',
             BoolUpdate,
         )
 
-        self.change_task_state_service = rospy.ServiceProxy(
+        self.__change_task_state = rospy.ServiceProxy(
             '/change_task_state_service',
             UpdateState,
         )
 
-        if self.task == 'study':
+        if self.TASK == 'study':
+            
             rospy.wait_for_service('/data_writer/resume_recording')
 
-            self.resume_image_recording = rospy.ServiceProxy(
+            self.__resume_image_recording = rospy.ServiceProxy(
                 '/chest_cam/image_writer/resume_recording',
                 Empty,
             )
 
-            self.pause_image_recording = rospy.ServiceProxy(
+            self.__pause_image_recording = rospy.ServiceProxy(
                 '/chest_cam/image_writer/pause_recording',
                 Empty,
             )
 
-            self.stop_image_recording = rospy.ServiceProxy(
+            self.__stop_image_recording = rospy.ServiceProxy(
                 '/chest_cam/image_writer/finish_recording',
                 Empty,
             )
 
-            self.resume_recording = rospy.ServiceProxy(
+            self.__resume_recording = rospy.ServiceProxy(
                 '/data_writer/resume_recording',
                 Empty,
             )
 
-            self.pause_recording = rospy.ServiceProxy(
+            self.__pause_recording = rospy.ServiceProxy(
                 '/data_writer/pause_recording',
                 Empty,
             )
 
-            self.stop_recording = rospy.ServiceProxy(
+            self.__stop_recording = rospy.ServiceProxy(
                 '/data_writer/finish_recording',
                 Empty,
             )
@@ -164,8 +159,8 @@ class HoloLensMapping:
 
     def __restart_nodes_service(self, request):
 
-        self.stop_positional_control_node(True)
-        self.stop_robot_control_node(True)
+        self.__stop_positional_control_node(True)
+        self.__stop_robot_control_node(True)
 
         return True
 
@@ -189,15 +184,15 @@ class HoloLensMapping:
         ]
 
         try:
-            self.br.sendTransform(
+            self.__BR.sendTransform(
                 input_pose,
                 input_orientation,
                 rospy.Time.now(),
                 'target',
-                self.anchor_id,
+                self.ANCHOR_ID,
             )
 
-            (translation, rotation) = self.listener.lookupTransform(
+            (translation, rotation) = self.__LISTENER.lookupTransform(
                 '/base_link', '/target', rospy.Time(0)
             )
 
@@ -215,7 +210,7 @@ class HoloLensMapping:
             tf.ConnectivityException,
             tf.ExtrapolationException,
         ):
-            self.rate.sleep()
+            self.RATE.sleep()
 
     # # Private methods:
     def __check_initialization(self):
@@ -341,31 +336,31 @@ class HoloLensMapping:
             f'/{self.ROBOT_NAME}/hololens_mapping: node has shut down.',
         )
 
-        if self.task == 'study':
-            self.stop_recording()
-            self.stop_image_recording()
+        if self.TASK == 'study':
+            self.__stop_recording()
+            self.__stop_image_recording()
 
     def on_press(self, key):
         try:
             if key == Key.f5:
 
-                if self.task == 'study':
-                    self.pause_recording()
-                    self.pause_image_recording()
+                if self.TASK == 'study':
+                    self.__pause_recording()
+                    self.__pause_image_recording()
 
-                self.stop_task(True)
+                self.__stop_task(True)
 
             elif key == Key.f6:
-                self.stop_positional_control_node(True)
-                self.stop_robot_control_node(True)
+                self.__stop_positional_control_node(True)
+                self.__stop_robot_control_node(True)
 
             elif key == Key.f7:
 
-                if self.task == 'study':
-                    self.resume_recording()
-                    self.resume_image_recording()
+                if self.TASK == 'study':
+                    self.__resume_recording()
+                    self.__resume_image_recording()
 
-                self.change_task_state_service(0)
+                self.__change_task_state(0)
 
         except AttributeError:
             pass
@@ -410,7 +405,7 @@ def main():
             listener.join()
 
         hololens_kinova_mapping.main_loop()
-        hololens_kinova_mapping.rate.sleep()
+        hololens_kinova_mapping.RATE.sleep()
 
 
 if __name__ == '__main__':

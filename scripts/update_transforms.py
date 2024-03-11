@@ -3,12 +3,10 @@ import rospy
 import numpy as np
 import tf
 import transformations as transform
-import math
-from std_msgs.msg import (Bool, Float32MultiArray)
-from geometry_msgs.msg import (Pose, Point, Quaternion)
+from std_msgs.msg import (Float32MultiArray)
+from geometry_msgs.msg import (Pose, Point)
 from gopher_ros_clearcore.msg import (Position)
-from Scripts.srv import ConvertTargetPosition
-
+from Scripts.srv import (ConvertTargetPosition)
 
 class UpdateTransforms:
 
@@ -18,88 +16,101 @@ class UpdateTransforms:
         anchor_id,
     ):
 
-        self.listener = tf.TransformListener()
-        self.br = tf.TransformBroadcaster()
-        self.rate = rospy.Rate(10)
+        # # Private CONSTANTS:
+        self.__LISTENER = tf.TransformListener()
+        self.__BR = tf.TransformBroadcaster()
 
+        # # Public CONSTANTS:
+        self.RATE = rospy.Rate(10)
         self.ROBOT_NAME = robot_name
-        self.anchor_id = anchor_id
+        self.ANCHOR_ID = anchor_id
 
-        self.anchor_frame = self.anchor_id
+        # # Private variables:
+        self.__anchor_frame = self.ANCHOR_ID
+        self.__chest_position = 0.44
+        
+        self.__calibrated_anchor = False
+        self.__calibrated_anchor_pos = [0, 0, 0]
+        
+        self.__tf_from_camera_to_object = [0, 0, 0]
 
-        self.chest_position = 0.44
-        self.calibrated_anchor = False
-        self.calibrated_anchor_pos = [0, 0, 0]
-
-        self.world_rotation_anchor = [0, 0, 0, 1]
-
-        self.anchor_tool_frame_tf = {
+        self.__tf_from_anchor_to_toolframe = {
             'position': np.array([0.0, 0.0, 0.0]),
             'orientation': np.array([0.0, 0.0, 0.0, 1.0]),
         }
 
-        self.kortex_baselink_tf = {
+        self.__tf_from_anchor_to_kortexbase = {
             'position': np.array([0.0, 0.0, 0.0]),
             'orientation': np.array([0.0, 0.0, 0.0, 1.0]),
         }
 
-        self.chest_cam_anchor_tf = {
+        self.__tf_from_anchor_to_camera = {
             'position': np.array([0.0, 0.0, 0.0]),
             'orientation': np.array([0.0, 0.0, 0.0, 1.0]),
         }
 
-        self.target_cam_base_tf = {
+        self.__tf_from_anchor_to_object = {
             'position': np.array([0.0, 0.0, 0.0]),
             'orientation': np.array([0.0, 0.0, 0.0, 1.0]),
         }
 
-        self.camera_target_tf = [0, 0, 0]
-        self.target_cam_anchor_tf = {
+        self.__tf_from_mobilebase_to_object = {
             'position': np.array([0.0, 0.0, 0.0]),
             'orientation': np.array([0.0, 0.0, 0.0, 1.0]),
         }
 
-        self.trans_tool_base = {
+        self.__tf_from_mobilebase_to_toolframe = {
             'position': np.array([0.0, 0.0, 0.0]),
             'orientation': np.array([1.0, 0.0, 0.0, 0.0]),
         }
 
-        self.__tf_toolframe_anchor = rospy.Publisher(
+        # # Public variables:
+
+        # # Service provider:
+        rospy.Service(
+            '/from_chest_to_anchor',
+            ConvertTargetPosition,
+            self.__convert_target_position,
+        )
+
+        # # Topic publisher:
+        self.__anchor_to_toolframe_pub = rospy.Publisher(
             f'/{self.ROBOT_NAME}/tf_toolframe',
             Point,
             queue_size=1,
-        )
-
-        self.__tf_baselink_anchor = rospy.Publisher(
+        )  
+    
+        self.__anchor_to_kortexbase_pub = rospy.Publisher(
             f'/{self.ROBOT_NAME}/tf_baselink',
             Pose,
             queue_size=1,
         )
 
-        self.__tf_baselink_toolframe = rospy.Publisher(
+        self.__mobilebase_to_toolframe_pub = rospy.Publisher(
             f'/{self.ROBOT_NAME}/tf_base_tool_frame',
             Pose,
             queue_size=1,
         )
 
-        self.__tf_target_camera_pub = rospy.Publisher(
-            '/my_gen3/target_hologram',
+        self.__camera_to_object_pub = rospy.Publisher(
+            f'/{self.ROBOT_NAME}/target_hologram',
             Pose,
             queue_size=1,
         )
 
-        self.__tf_target_camera_base_pub = rospy.Publisher(
-            '/my_gen3/tf_base_target_cam',
+        self.__base_to_object_pub = rospy.Publisher(
+            f'/{self.ROBOT_NAME}/tf_base_target_cam',
             Pose,
             queue_size=1,
         )
 
-        self.__tf_chest_cam_anchor_tf_pub = rospy.Publisher(
-            '/my_gen3/tf_chest_cam_anchor',
+        self.__anchor_to_camera_pub = rospy.Publisher(
+            f'/{self.ROBOT_NAME}/tf_chest_cam_anchor',
             Pose,
             queue_size=1,
         )
-
+        
+        # # Topic subscriber:
         rospy.Subscriber(
             f'/{self.ROBOT_NAME}/calibrate_anchor',
             Point,
@@ -118,29 +129,17 @@ class UpdateTransforms:
             self.__update_chest_callback,
         )
 
-        rospy.Subscriber(
-            'unity_anchor_rotation',
-            Quaternion,
-            self.__unity_anchor_rotation_callback,
-        )
-
-        self.convert_target_service = rospy.Service(
-            '/from_chest_to_anchor',
-            ConvertTargetPosition,
-            self.convert_target_position,
-        )
-
-    def convert_target_position(self, request):
+    def __convert_target_position(self, request):
 
         transformation_matrix = transform.quaternion_matrix(
             [
-                self.chest_cam_anchor_tf['orientation'][3],
-                self.chest_cam_anchor_tf['orientation'][0],
-                self.chest_cam_anchor_tf['orientation'][1],
-                self.chest_cam_anchor_tf['orientation'][2]
+                self.__tf_from_anchor_to_camera['orientation'][3],
+                self.__tf_from_anchor_to_camera['orientation'][0],
+                self.__tf_from_anchor_to_camera['orientation'][1],
+                self.__tf_from_anchor_to_camera['orientation'][2]
             ]
         )
-        transformation_matrix[:3, 3] = self.chest_cam_anchor_tf['position']
+        transformation_matrix[:3, 3] = self.__tf_from_anchor_to_camera['position']
 
         transformation_matrix_target = transform.quaternion_matrix([1, 0, 0, 0])
         transformation_matrix_target[:3, 3] = request.fromchest.data
@@ -154,114 +153,122 @@ class UpdateTransforms:
 
         return translation
 
-    def __unity_anchor_rotation_callback(self, message):
-
-        self.world_rotation_anchor = [
-            message.x,
-            message.y,
-            message.z,
-            message.w,
-        ]
-
     def __camera_target_callback(self, message):
 
-        self.camera_target_tf[0] = message.x
-        self.camera_target_tf[1] = message.y
-        self.camera_target_tf[2] = message.z
+        self.__tf_from_camera_to_object[0] = message.x
+        self.__tf_from_camera_to_object[1] = message.y
+        self.__tf_from_camera_to_object[2] = message.z
 
     def __update_chest_callback(self, message):
 
-        self.chest_position = (message.position) / 1000
+        self.__chest_position = (message.position) / 1000
 
     def __calibration_anchor_callback(self, message):
 
-        self.calibrated_anchor_pos[0] += message.x
-        self.calibrated_anchor_pos[1] += message.y
-        self.calibrated_anchor_pos[2] += -message.z
+        self.__calibrated_anchor_pos[0] += message.x
+        self.__calibrated_anchor_pos[1] += message.y
+        self.__calibrated_anchor_pos[2] += -message.z
 
-        self.anchor_frame = 'new_anchor'
-        self.calibrated_anchor = True
+        self.__anchor_frame = 'new_anchor'
+        self.__calibrated_anchor = True
 
-    def main_loop(self):
+    def __send_transformations(self):
+        
+        if self.__calibrated_anchor:
 
-        if self.calibrated_anchor:
-
-            self.br.sendTransform(
-                self.calibrated_anchor_pos, (0, 0, 0, 1), rospy.Time.now(),
-                self.anchor_frame, self.anchor_id
+            self.__BR.sendTransform(
+                self.__calibrated_anchor_pos, 
+                (0, 0, 0, 1), 
+                rospy.Time.now(),
+                self.__anchor_frame, 
+                self.ANCHOR_ID,
             )
 
-        self.br.sendTransform(
-            (0.02, -0.14, 0.93 + self.chest_position),
-            (0.2887332, 0.2887332, -0.6454712, 0.6454712), rospy.Time.now(),
-            'kortex/base_link', 'base_link'
+        self.__BR.sendTransform(
+            (0.02, -0.14, 0.93 + self.__chest_position),
+            (0.2887332, 0.2887332, -0.6454712, 0.6454712), 
+            rospy.Time.now(),
+            'kortex/base_link', 
+            'base_link',
         )
 
-        self.br.sendTransform(
-            (0.0, 0.05, 0.855 + self.chest_position), (-0.5, 0.5, -0.5, 0.5),
-            rospy.Time.now(), '/chest_cam', '/base_link'
+        self.__BR.sendTransform(
+            (0.0, 0.05, 0.855 + self.__chest_position), 
+            (-0.5, 0.5, -0.5, 0.5),
+            rospy.Time.now(), 
+            '/chest_cam', 
+            '/base_link',
         )
 
-        self.br.sendTransform(
-            self.camera_target_tf,
+        self.__BR.sendTransform(
+            self.__tf_from_camera_to_object,
             (0, 0, 0, 1),
             rospy.Time.now(),
             '/target_cam',
-            self.anchor_frame,
+            self.__anchor_frame,
         )
+
+    def __listen_to_transformations(self):
 
         try:
 
             (
-                self.anchor_tool_frame_tf['position'],
-                self.anchor_tool_frame_tf['orientation']
-            ) = self.listener.lookupTransform(
-                self.anchor_frame,
+                self.__tf_from_anchor_to_toolframe['position'],
+                self.__tf_from_anchor_to_toolframe['orientation']
+            ) = self.__LISTENER.lookupTransform(
+                self.__anchor_frame,
                 'kortex/tool_frame',
                 rospy.Time(0),
             )
 
             (
-                self.trans_tool_base['position'],
-                self.trans_tool_base['orientation']
-            ) = self.listener.lookupTransform(
+                self.__tf_from_mobilebase_to_toolframe['position'],
+                self.__tf_from_mobilebase_to_toolframe['orientation']
+            ) = self.__LISTENER.lookupTransform(
                 '/base_link', 'kortex/tool_frame', rospy.Time(0)
             )
 
             (
-                self.kortex_baselink_tf['position'],
-                self.kortex_baselink_tf['orientation']
-            ) = self.listener.lookupTransform(
-                self.anchor_frame, 'kortex/base_link', rospy.Time(0)
+                self.__tf_from_anchor_to_kortexbase['position'],
+                self.__tf_from_anchor_to_kortexbase['orientation']
+            ) = self.__LISTENER.lookupTransform(
+                self.__anchor_frame, 'kortex/base_link', rospy.Time(0)
             )
 
             (
-                self.target_cam_anchor_tf['position'],
-                self.target_cam_anchor_tf['orientation']
-            ) = self.listener.lookupTransform(
-                self.anchor_frame,
+                self.__tf_from_anchor_to_object['position'],
+                self.__tf_from_anchor_to_object['orientation']
+            ) = self.__LISTENER.lookupTransform(
+                self.__anchor_frame,
                 '/target_cam',
                 rospy.Time(0),
             )
 
+            self.__tf_from_anchor_to_camera['position'], self.__tf_from_anchor_to_camera[
+                'orientation'] = self.__LISTENER.lookupTransform(
+                    self.__anchor_frame,
+                    '/chest_cam',
+                    rospy.Time(0),
+                )
+            
             (
-                self.target_cam_base_tf['position'],
-                self.target_cam_base_tf['orientation']
-            ) = self.listener.lookupTransform(
+                self.__tf_from_mobilebase_to_object['position'],
+                self.__tf_from_mobilebase_to_object['orientation']
+            ) = self.__LISTENER.lookupTransform(
                 '/base_link',
                 '/target_cam',
                 rospy.Time(0),
             )
 
             # Calculate world rotation of base link Kortex frame
-            self.kortex_baselink_tf['orientation'
+            self.__tf_from_anchor_to_kortexbase['orientation'
                                    ] = transform.quaternion_multiply(
-                                       self.kortex_baselink_tf['orientation'],
-                                       self.world_rotation_anchor,
+                                       self.__tf_from_anchor_to_kortexbase['orientation'],
+                                       [0, 0, 0, 1],
                                    )
 
             # Transform to Left coordinate system
-            self.kortex_baselink_tf['orientation'
+            self.__tf_from_anchor_to_kortexbase['orientation'
                                    ] = transform.quaternion_multiply(
                                        transform.quaternion_about_axis(
                                            np.deg2rad(90),
@@ -271,49 +278,17 @@ class UpdateTransforms:
                                                0,
                                            ),
                                        ),
-                                       self.kortex_baselink_tf['orientation'],
+                                       self.__tf_from_anchor_to_kortexbase['orientation'],
                                    )
 
-            self.chest_cam_anchor_tf['position'], self.chest_cam_anchor_tf[
-                'orientation'] = self.listener.lookupTransform(
-                    self.anchor_frame,
-                    '/chest_cam',
-                    rospy.Time(0),
-                )
-
         except (
-            tf.LookupException, tf.ConnectivityException,
-            tf.ExtrapolationException
+            tf.LookupException, 
+            tf.ConnectivityException,
+            tf.ExtrapolationException,
         ):
-
-            self.rate.sleep()
-
-        anchor_to_tool_frame = Point()
-        anchor_to_tool_frame.x = self.anchor_tool_frame_tf['position'][0]
-        anchor_to_tool_frame.y = self.anchor_tool_frame_tf['position'][1]
-        anchor_to_tool_frame.z = self.anchor_tool_frame_tf['position'][2]
-
-        self.__tf_toolframe_anchor.publish(anchor_to_tool_frame)
-
-        anchor_to_kortex_base = self.__compose_pose_message(
-            self.kortex_baselink_tf
-        )
-        self.__tf_baselink_anchor.publish(anchor_to_kortex_base)
-
-        base_to_toolframe = self.__compose_pose_message(self.trans_tool_base)
-        self.__tf_baselink_toolframe.publish(base_to_toolframe)
-
-        anchor_to_target = self.__compose_pose_message(
-            self.target_cam_anchor_tf
-        )
-        self.__tf_target_camera_pub.publish(anchor_to_target)
-
-        target_to_base = self.__compose_pose_message(self.target_cam_base_tf)
-        self.__tf_target_camera_base_pub.publish(target_to_base)
-
-        cam_to_anchor = self.__compose_pose_message(self.chest_cam_anchor_tf)
-        self.__tf_chest_cam_anchor_tf_pub.publish(cam_to_anchor)
-
+            
+            self.RATE.sleep()
+    
     def __compose_pose_message(self, target_pose):
         """
         target_pose: dict
@@ -341,11 +316,43 @@ class UpdateTransforms:
         pose_message.orientation.z = target_pose['orientation'][3]
 
         return pose_message
+    
+    def main_loop(self):
 
+        self.__send_transformations()
+        self.__listen_to_transformations()
 
-if __name__ == '__main__':
+        anchor_to_tool_frame = Point()
+        anchor_to_tool_frame.x = self.__tf_from_anchor_to_toolframe['position'][0]
+        anchor_to_tool_frame.y = self.__tf_from_anchor_to_toolframe['position'][1]
+        anchor_to_tool_frame.z = self.__tf_from_anchor_to_toolframe['position'][2]
+        self.__anchor_to_toolframe_pub.publish(anchor_to_tool_frame)
 
-    rospy.init_node('tf_updates',)
+        anchor_to_kortexbase = self.__compose_pose_message(self.__tf_from_anchor_to_kortexbase)
+        self.__anchor_to_kortexbase_pub.publish(anchor_to_kortexbase)
+
+        base_to_toolframe = self.__compose_pose_message(self.__tf_from_mobilebase_to_toolframe)
+        self.__mobilebase_to_toolframe_pub.publish(base_to_toolframe)
+
+        anchor_to_target = self.__compose_pose_message(self.__tf_from_anchor_to_object)
+        self.__camera_to_object_pub.publish(anchor_to_target)
+
+        base_to_target = self.__compose_pose_message(self.__tf_from_mobilebase_to_object)
+        self.__base_to_object_pub.publish(base_to_target)
+
+        cam_to_anchor = self.__compose_pose_message(self.__tf_from_anchor_to_camera)
+        self.__anchor_to_camera_pub.publish(cam_to_anchor)
+
+def main():
+    """
+    """
+
+    rospy.init_node(
+        'pose_updates',
+        log_level=rospy.INFO,
+    )
+
+    rospy.loginfo('\n\n\n\n\n')
 
     kinova_name = rospy.get_param(
         param_name=f'{rospy.get_name()}/robot_name',
@@ -361,4 +368,9 @@ if __name__ == '__main__':
 
     while not rospy.is_shutdown():
         transformations.main_loop()
-        transformations.rate.sleep()
+        transformations.RATE.sleep()
+
+if __name__ == '__main__':
+    main()
+
+    
