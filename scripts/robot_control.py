@@ -20,7 +20,9 @@ from std_msgs.msg import (Bool, Int32)
 from std_srvs.srv import (Empty)
 from geometry_msgs.msg import (Pose)
 from kortex_driver.srv import (ApplyEmergencyStop, Base_ClearFaults)
-from kinova_positional_control.srv import (GripperForceGrasping, GripperPosition)
+from kinova_positional_control.srv import (
+    GripperForceGrasping, GripperPosition
+)
 from Scripts.srv import (UpdateState, BoolUpdate, UpdateChest)
 
 
@@ -80,7 +82,7 @@ class KinovaTeleoperation:
         self.__counter = None
         self.__last_norm_value = None
         self.__norm_value_stable_since = None
-        self.__move_to = 1        
+        self.__move_to = 1
         self.__chest_position = 440.0
         self.__state = 0
         self.__previous_state = 0
@@ -89,9 +91,9 @@ class KinovaTeleoperation:
         self.__on_startup = True
         self.__last_pose_tracking = False
         self.__pose_tracking = False
-        self.__is_remote_controlling = False        
+        self.__is_remote_controlling = False
         self.__compensate_depth = False
-        self.__compensate_height = False        
+        self.__compensate_height = False
         self.__move_medicine_bool = False
         self.__shut_down = False
         self.__chest_adjusted = False
@@ -584,8 +586,6 @@ class KinovaTeleoperation:
 
         self.__last_pose_tracking = self.__pose_tracking
 
-        self.__mode_state_machine(self.__mode_button)
-
         compensated_input_pose = {
             'position': np.array([0.0, 0.0, 0.0]),
             'orientation': np.array([1.0, 0.0, 0.0, 0.0]),
@@ -1031,7 +1031,6 @@ class KinovaTeleoperation:
         pick_and_place_state = Int32()
         pick_and_place_state.data = self.__state
         self.__robot_pick_and_place.publish(pick_and_place_state)
-
 
     def node_shutdown(self):
         """
