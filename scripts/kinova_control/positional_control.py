@@ -191,11 +191,6 @@ class KinovaPositionalControl:
         }
 
         # # Service provider:
-        self.stop_positional_control_node = rospy.Service(
-            f'/{self.ROBOT_NAME}/positional_control/shut_down',
-            BoolUpdate,
-            self.__shutdown_node_service,
-        )
 
         # # Service subscriber:
         self.__pid_velocity_limit = rospy.ServiceProxy(
@@ -275,11 +270,6 @@ class KinovaPositionalControl:
         self.__dependency_status['relaxed_ik'] = msg.data
 
     # # Service handlers:
-    def __shutdown_node_service(self, request):
-
-        self.__shut_down = True
-
-        return True
 
     # # Topic callbacks:
     def __input_pose_callback(self, msg):

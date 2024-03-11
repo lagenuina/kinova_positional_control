@@ -167,19 +167,9 @@ class KinovaTeleoperation:
             self.__move_medicine,
         )
         rospy.Service(
-            f'/{self.ROBOT_NAME}/stop_task',
-            Empty,
-            self.__stop_service,
-        )
-        rospy.Service(
             '/remote_handling',
             SetBool,
             self.__remote_control,
-        )
-        rospy.Service(
-            f'/{self.ROBOT_NAME}/robot_control/shut_down',
-            Empty,
-            self.__shutdown_node_service,
         )
 
         # # Service subscriber:
@@ -387,29 +377,11 @@ class KinovaTeleoperation:
 
         self.task_state_machine()
 
-    def __stop_service(self, request):
-
-        # E-stop arm motion
-        self.__estop_arm_srv()
-
-        # Reset the flag
-        self.__pose_tracking = False
-
-        self.__state = 0
-
-        return []
-
     def __remote_control(self, request):
 
         self.__is_remote_controlling = request.data
 
         return True
-
-    def __shutdown_node_service(self, request):
-
-        self.__shut_down = True
-
-        return []
 
     def __change_state(self, request):
 
