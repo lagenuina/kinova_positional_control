@@ -6,8 +6,8 @@ import tf
 from pynput.keyboard import Key, Listener
 from std_msgs.msg import (Bool)
 from geometry_msgs.msg import (Pose)
-from Scripts.srv import BoolUpdate, UpdateState
-from std_srvs.srv import Empty
+from Scripts.srv import (UpdateState)
+from std_srvs.srv import (Empty)
 
 
 class HoloLensMapping:
@@ -70,24 +70,24 @@ class HoloLensMapping:
         # # Service provider:
         rospy.Service(
             f'/{self.ROBOT_NAME}/restart_nodes',
-            BoolUpdate,
+            Empty,
             self.__restart_nodes_service,
         )
 
         # # Service subscriber:
         self.__stop_robot_control_node = rospy.ServiceProxy(
             f'/{self.ROBOT_NAME}/robot_control/shut_down',
-            BoolUpdate,
+            Empty,
         )
 
         self.__stop_positional_control_node = rospy.ServiceProxy(
             f'/{self.ROBOT_NAME}/positional_control/shut_down',
-            BoolUpdate,
+            Empty,
         )
 
         self.__stop_task = rospy.ServiceProxy(
             f'/{self.ROBOT_NAME}/stop_task',
-            BoolUpdate,
+            Empty,
         )
 
         self.__change_task_state = rospy.ServiceProxy(
@@ -162,7 +162,7 @@ class HoloLensMapping:
         self.__stop_positional_control_node(True)
         self.__stop_robot_control_node(True)
 
-        return True
+        return []
 
     # # Topic callbacks:
     def __hololens_pose_callback(self, message):

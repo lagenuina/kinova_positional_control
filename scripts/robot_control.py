@@ -4,7 +4,7 @@
 TODO: Add detailed description.
 
 Author (s):
-    1. Lorena Genua (lorenagenua@gmail.com), Human-Inspired Robotics (HiRo)
+    1. Lorena Genua (lorena.genua@gmail.com), Human-Inspired Robotics (HiRo)
        lab, Worcester Polytechnic Institute (WPI), 2023.
     2. Nikita Boguslavskii (bognik3@gmail.com), Human-Inspired Robotics (HiRo)
        lab, Worcester Polytechnic Institute (WPI), 2023.
@@ -17,13 +17,11 @@ import time
 import transformations
 from ast import (literal_eval)
 from std_msgs.msg import (Bool, Int32)
-from std_srvs.srv import (Empty)
+from std_srvs.srv import (Empty, SetBool)
 from geometry_msgs.msg import (Pose)
 from kortex_driver.srv import (ApplyEmergencyStop, Base_ClearFaults)
-from kinova_positional_control.srv import (
-    GripperForceGrasping, GripperPosition
-)
-from Scripts.srv import (UpdateState, BoolUpdate, UpdateChest)
+from kinova_positional_control.srv import (GripperForceGrasping, GripperPosition)
+from Scripts.srv import (UpdateState, UpdateChest)
 
 
 class KinovaTeleoperation:
@@ -170,17 +168,17 @@ class KinovaTeleoperation:
         )
         rospy.Service(
             f'/{self.ROBOT_NAME}/stop_task',
-            BoolUpdate,
+            Empty,
             self.__stop_service,
         )
         rospy.Service(
             '/remote_handling',
-            BoolUpdate,
+            SetBool,
             self.__remote_control,
         )
         rospy.Service(
             f'/{self.ROBOT_NAME}/robot_control/shut_down',
-            BoolUpdate,
+            Empty,
             self.__shutdown_node_service,
         )
 
@@ -195,7 +193,7 @@ class KinovaTeleoperation:
         )
         self.__update_target_service = rospy.ServiceProxy(
             '/update_target',
-            BoolUpdate,
+            SetBool,
         )
         self.__update_chest_service = rospy.ServiceProxy(
             '/update_chest',
@@ -399,7 +397,7 @@ class KinovaTeleoperation:
 
         self.__state = 0
 
-        return True
+        return []
 
     def __remote_control(self, request):
 
@@ -411,7 +409,7 @@ class KinovaTeleoperation:
 
         self.__shut_down = True
 
-        return True
+        return []
 
     def __change_state(self, request):
 
