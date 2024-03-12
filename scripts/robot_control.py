@@ -20,7 +20,9 @@ from std_msgs.msg import (Bool, Int32)
 from std_srvs.srv import (Empty, SetBool)
 from geometry_msgs.msg import (Pose)
 from kortex_driver.srv import (ApplyEmergencyStop, Base_ClearFaults)
-from kinova_positional_control.srv import (GripperForceGrasping, GripperPosition)
+from kinova_positional_control.srv import (
+    GripperForceGrasping, GripperPosition
+)
 from Scripts.srv import (UpdateState, UpdateChest)
 
 
@@ -186,8 +188,8 @@ class KinovaTeleoperation:
             SetBool,
         )
         self.__update_chest_service = rospy.ServiceProxy(
-            'chest_handler/adjust_chest',
-            UpdateChest,
+            '/chest_handler/adjust_chest',
+            Empty,
         )
         self.__estop_arm_srv = rospy.ServiceProxy(
             f'/{self.ROBOT_NAME}/base/apply_emergency_stop',
@@ -819,7 +821,7 @@ class KinovaTeleoperation:
 
             if self.__new_target_received and not self.__rh_help:
 
-                self.__update_chest_service(True)
+                self.__update_chest_service()
                 # self.__chest_position = response.response
 
                 if self.__previous_state == 3:
@@ -940,7 +942,7 @@ class KinovaTeleoperation:
             if current_norm_value_x < 0.03 and not self.__chest_adjusted:
 
                 if not same_shelf:
-                    self.__update_chest_service(True)
+                    self.__update_chest_service()
                     # self.__chest_position = response.response
 
                 self.__chest_adjusted = True

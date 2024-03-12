@@ -3,10 +3,14 @@ import rospy
 import numpy as np
 import tf
 import transformations as transform
-from std_msgs.msg import (Float32MultiArray)
+from std_msgs.msg import (
+    Float32,
+    Float32MultiArray,
+)
 from geometry_msgs.msg import (Pose, Point)
 from gopher_ros_clearcore.msg import (Position)
 from Scripts.srv import (ConvertTargetPosition)
+
 
 class UpdateTransforms:
 
@@ -28,10 +32,10 @@ class UpdateTransforms:
         # # Private variables:
         self.__anchor_frame = self.ANCHOR_ID
         self.__chest_position = 0.44
-        
+
         self.__calibrated_anchor = False
         self.__calibrated_anchor_pos = [0, 0, 0]
-        
+
         self.__tf_from_camera_to_object = [0, 0, 0]
 
         self.__tf_from_anchor_to_toolframe = {
@@ -78,8 +82,8 @@ class UpdateTransforms:
             f'/{self.ROBOT_NAME}/tf_toolframe',
             Point,
             queue_size=1,
-        )  
-    
+        )
+
         self.__anchor_to_kortexbase_pub = rospy.Publisher(
             f'/{self.ROBOT_NAME}/tf_baselink',
             Pose,
@@ -109,7 +113,7 @@ class UpdateTransforms:
             Pose,
             queue_size=1,
         )
-        
+
         # # Topic subscriber:
         rospy.Subscriber(
             f'/{self.ROBOT_NAME}/calibrate_anchor',
@@ -124,8 +128,8 @@ class UpdateTransforms:
         ),
 
         rospy.Subscriber(
-            'z_chest_pos',
-            Position,
+            'chest_logger/current_position',
+            Float32,
             self.__update_chest_callback,
         )
 
@@ -139,7 +143,8 @@ class UpdateTransforms:
                 self.__tf_from_anchor_to_camera['orientation'][2]
             ]
         )
-        transformation_matrix[:3, 3] = self.__tf_from_anchor_to_camera['position']
+        transformation_matrix[:3,
+                              3] = self.__tf_from_anchor_to_camera['position']
 
         transformation_matrix_target = transform.quaternion_matrix([1, 0, 0, 0])
         transformation_matrix_target[:3, 3] = request.fromchest.data
@@ -161,7 +166,7 @@ class UpdateTransforms:
 
     def __update_chest_callback(self, message):
 
-        self.__chest_position = (message.position) / 1000
+        self.__chest_position = (message.data)
 
     def __calibration_anchor_callback(self, message):
 
@@ -173,30 +178,30 @@ class UpdateTransforms:
         self.__calibrated_anchor = True
 
     def __send_transformations(self):
-        
+
         if self.__calibrated_anchor:
 
             self.__BR.sendTransform(
-                self.__calibrated_anchor_pos, 
-                (0, 0, 0, 1), 
+                self.__calibrated_anchor_pos,
+                (0, 0, 0, 1),
                 rospy.Time.now(),
-                self.__anchor_frame, 
+                self.__anchor_frame,
                 self.ANCHOR_ID,
             )
 
         self.__BR.sendTransform(
             (0.02, -0.14, 0.93 + self.__chest_position),
-            (0.2887332, 0.2887332, -0.6454712, 0.6454712), 
+            (0.2887332, 0.2887332, -0.6454712, 0.6454712),
             rospy.Time.now(),
-            'kortex/base_link', 
+            'kortex/base_link',
             'base_link',
         )
 
         self.__BR.sendTransform(
-            (0.0, 0.05, 0.855 + self.__chest_position), 
+            (0.0, 0.05, 0.855 + self.__chest_position),
             (-0.5, 0.5, -0.5, 0.5),
-            rospy.Time.now(), 
-            '/chest_cam', 
+            rospy.Time.now(),
+            '/chest_cam',
             '/base_link',
         )
 
@@ -244,13 +249,14 @@ class UpdateTransforms:
                 rospy.Time(0),
             )
 
-            self.__tf_from_anchor_to_camera['position'], self.__tf_from_anchor_to_camera[
-                'orientation'] = self.__LISTENER.lookupTransform(
-                    self.__anchor_frame,
-                    '/chest_cam',
-                    rospy.Time(0),
-                )
-            
+            self.__tf_from_anchor_to_camera[
+                'position'], self.__tf_from_anchor_to_camera[
+                    'orientation'] = self.__LISTENER.lookupTransform(
+                        self.__anchor_frame,
+                        '/chest_cam',
+                        rospy.Time(0),
+                    )
+
             (
                 self.__tf_from_mobilebase_to_object['position'],
                 self.__tf_from_mobilebase_to_object['orientation']
@@ -261,34 +267,34 @@ class UpdateTransforms:
             )
 
             # Calculate world rotation of base link Kortex frame
-            self.__tf_from_anchor_to_kortexbase['orientation'
-                                   ] = transform.quaternion_multiply(
-                                       self.__tf_from_anchor_to_kortexbase['orientation'],
-                                       [0, 0, 0, 1],
-                                   )
+            self.__tf_from_anchor_to_kortexbase[
+                'orientation'] = transform.quaternion_multiply(
+                    self.__tf_from_anchor_to_kortexbase['orientation'],
+                    [0, 0, 0, 1],
+                )
 
             # Transform to Left coordinate system
-            self.__tf_from_anchor_to_kortexbase['orientation'
-                                   ] = transform.quaternion_multiply(
-                                       transform.quaternion_about_axis(
-                                           np.deg2rad(90),
-                                           (
-                                               1,
-                                               0,
-                                               0,
-                                           ),
-                                       ),
-                                       self.__tf_from_anchor_to_kortexbase['orientation'],
-                                   )
+            self.__tf_from_anchor_to_kortexbase[
+                'orientation'] = transform.quaternion_multiply(
+                    transform.quaternion_about_axis(
+                        np.deg2rad(90),
+                        (
+                            1,
+                            0,
+                            0,
+                        ),
+                    ),
+                    self.__tf_from_anchor_to_kortexbase['orientation'],
+                )
 
         except (
-            tf.LookupException, 
+            tf.LookupException,
             tf.ConnectivityException,
             tf.ExtrapolationException,
         ):
-            
+
             self.RATE.sleep()
-    
+
     def __compose_pose_message(self, target_pose):
         """
         target_pose: dict
@@ -316,32 +322,46 @@ class UpdateTransforms:
         pose_message.orientation.z = target_pose['orientation'][3]
 
         return pose_message
-    
+
     def main_loop(self):
 
         self.__send_transformations()
         self.__listen_to_transformations()
 
         anchor_to_tool_frame = Point()
-        anchor_to_tool_frame.x = self.__tf_from_anchor_to_toolframe['position'][0]
-        anchor_to_tool_frame.y = self.__tf_from_anchor_to_toolframe['position'][1]
-        anchor_to_tool_frame.z = self.__tf_from_anchor_to_toolframe['position'][2]
+        anchor_to_tool_frame.x = self.__tf_from_anchor_to_toolframe['position'][
+            0]
+        anchor_to_tool_frame.y = self.__tf_from_anchor_to_toolframe['position'][
+            1]
+        anchor_to_tool_frame.z = self.__tf_from_anchor_to_toolframe['position'][
+            2]
         self.__anchor_to_toolframe_pub.publish(anchor_to_tool_frame)
 
-        anchor_to_kortexbase = self.__compose_pose_message(self.__tf_from_anchor_to_kortexbase)
+        anchor_to_kortexbase = self.__compose_pose_message(
+            self.__tf_from_anchor_to_kortexbase
+        )
         self.__anchor_to_kortexbase_pub.publish(anchor_to_kortexbase)
 
-        base_to_toolframe = self.__compose_pose_message(self.__tf_from_mobilebase_to_toolframe)
+        base_to_toolframe = self.__compose_pose_message(
+            self.__tf_from_mobilebase_to_toolframe
+        )
         self.__mobilebase_to_toolframe_pub.publish(base_to_toolframe)
 
-        anchor_to_target = self.__compose_pose_message(self.__tf_from_anchor_to_object)
+        anchor_to_target = self.__compose_pose_message(
+            self.__tf_from_anchor_to_object
+        )
         self.__camera_to_object_pub.publish(anchor_to_target)
 
-        base_to_target = self.__compose_pose_message(self.__tf_from_mobilebase_to_object)
+        base_to_target = self.__compose_pose_message(
+            self.__tf_from_mobilebase_to_object
+        )
         self.__base_to_object_pub.publish(base_to_target)
 
-        cam_to_anchor = self.__compose_pose_message(self.__tf_from_anchor_to_camera)
+        cam_to_anchor = self.__compose_pose_message(
+            self.__tf_from_anchor_to_camera
+        )
         self.__anchor_to_camera_pub.publish(cam_to_anchor)
+
 
 def main():
     """
@@ -370,7 +390,6 @@ def main():
         transformations.main_loop()
         transformations.RATE.sleep()
 
+
 if __name__ == '__main__':
     main()
-
-    
