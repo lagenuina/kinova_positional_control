@@ -29,7 +29,7 @@
     name="launch_autonomous" 
     default="true"/>
     <arg 
-    name="launch_controller_feedback" 
+    name="launch_controller_feedback"
     default="true"/>
 
     <!-- ======================== END OF SETTINGS ========================== -->

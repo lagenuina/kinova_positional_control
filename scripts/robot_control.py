@@ -186,7 +186,7 @@ class KinovaTeleoperation:
             SetBool,
         )
         self.__update_chest_service = rospy.ServiceProxy(
-            '/update_chest',
+            'chest_handler/adjust_chest',
             UpdateChest,
         )
         self.__estop_arm_srv = rospy.ServiceProxy(
@@ -291,8 +291,8 @@ class KinovaTeleoperation:
                 if self.__compensate_depth:
                     self.__input_pose['position'][0] += 0.05
 
-                if self.__chest_position == 440:
-                    self.__input_pose['position'][2] -= 0.02
+                # if self.__chest_position == 440:
+                #     self.__input_pose['position'][2] -= 0.02
 
             elif self.__state == 2 and self.__has_grasped == 1 and self.__is_remote_controlling:
 
@@ -819,8 +819,8 @@ class KinovaTeleoperation:
 
             if self.__new_target_received and not self.__rh_help:
 
-                response = self.__update_chest_service(True)
-                self.__chest_position = response.response
+                self.__update_chest_service(True)
+                # self.__chest_position = response.response
 
                 if self.__previous_state == 3:
                     self.__state = 3
@@ -885,9 +885,9 @@ class KinovaTeleoperation:
                         self.__chest_adjusted = False
                         self.__compensate_depth = False
 
-                if self.__chest_position == 440.0:
+                # if self.__chest_position == 440.0:
 
-                    self.__compensate_height = True
+                #     self.__compensate_height = True
 
             elif self.__has_grasped == 2:
 
@@ -940,8 +940,8 @@ class KinovaTeleoperation:
             if current_norm_value_x < 0.03 and not self.__chest_adjusted:
 
                 if not same_shelf:
-                    response = self.__update_chest_service(True)
-                    self.__chest_position = response.response
+                    self.__update_chest_service(True)
+                    # self.__chest_position = response.response
 
                 self.__chest_adjusted = True
 
