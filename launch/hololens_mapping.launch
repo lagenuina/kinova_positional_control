@@ -8,9 +8,7 @@
 
     <arg 
     name="anchor_id" 
-    default="1b66d0a5-f3e3-4013-b2e4-0461ad55e4bf"/>
-
-    <!-- default="374594eb-6114-4816-82e4-ab69f9e2961b"/> -->
+    default=""/>
 
     <!-- If any of dependency or optional subfiles should not be launched (or
     are launched separately) set corresponding argument to "false". -->
