@@ -80,27 +80,21 @@ class KinovaTeleoperation:
         }
 
         self.__counter = None
-        self.__last_norm_value = None
-        self.__norm_value_stable_since = None
         self.__move_to = 1
-        self.__chest_position = 440.0
         self.__state = 0
         self.__previous_state = 0
 
+        self.__update_state = False
         self.__has_grasped = False
-        self.__on_startup = True
         self.__last_pose_tracking = False
         self.__pose_tracking = False
         self.__is_remote_controlling = False
-        self.__compensate_depth = False
-        self.__compensate_height = False
         self.__move_medicine_bool = False
         self.__shut_down = False
-        self.__chest_adjusted = False
         self.__new_target_received = False
         self.__rh_help = False
 
-        self.__control_mode = 'position'
+
 
         # # Public variables:
         # Last commanded Relaxed IK pose is required to compensate controller
@@ -120,7 +114,6 @@ class KinovaTeleoperation:
         }
 
         self.tool_frame_position = [0, 0, 0]
-        self.target_relaxed_ik = [0, 0, 0]
 
         # # Initialization and dependency status topics:
         self.__is_initialized = False
@@ -159,11 +152,6 @@ class KinovaTeleoperation:
             self.__change_state,
         )
         rospy.Service(
-            '/update_task_state',
-            Empty,
-            self.__update_state,
-        )
-        rospy.Service(
             '/move_medicine',
             UpdateState,
             self.__move_medicine,
@@ -172,6 +160,11 @@ class KinovaTeleoperation:
             '/remote_handling',
             SetBool,
             self.__remote_control,
+        )
+        rospy.Service(
+            f'/{self.ROBOT_NAME}/robot_control/update_state',
+            Empty,
+            self.__update_task_state,
         )
 
         # # Service subscriber:
@@ -182,6 +175,10 @@ class KinovaTeleoperation:
         self.__gripper_position = rospy.ServiceProxy(
             f'/{self.ROBOT_NAME}/gripper/position',
             GripperPosition,
+        )
+        self.__start_tracking = rospy.ServiceProxy(
+            f'/{self.ROBOT_NAME}/gripper/force_grasping',
+            GripperForceGrasping,
         )
         self.__update_target_service = rospy.ServiceProxy(
             '/update_target',
@@ -203,7 +200,7 @@ class KinovaTeleoperation:
             queue_size=1,
         )
         self.__kinova_pose = rospy.Publisher(
-            f'/{self.ROBOT_NAME}/positional_control/input_pose',
+            f'/{self.ROBOT_NAME}/robot_control/target_pose',
             Pose,
             queue_size=1,
         )
@@ -277,7 +274,7 @@ class KinovaTeleoperation:
         if self.__pose_tracking:
 
             if self.__state == 1:
-
+                # Detected target
                 self.__input_pose['position'][0] = message.position.x + 0.02
                 self.__input_pose['position'][1] = message.position.y
                 self.__input_pose['position'][2] = message.position.z + 0.02
@@ -287,62 +284,43 @@ class KinovaTeleoperation:
                 self.__input_pose['orientation'][2] = message.orientation.y
                 self.__input_pose['orientation'][3] = message.orientation.z
 
-                self.__target_grasped['position'] = self.__input_pose['position'
-                                                                     ].copy()
+                self.__target_grasped['position'] = self.__input_pose['position'].copy()
 
-                if self.__compensate_depth:
-                    self.__input_pose['position'][0] += 0.05
-
-                # if self.__chest_position == 440:
-                #     self.__input_pose['position'][2] -= 0.02
-
-            elif self.__state == 2 and self.__has_grasped == 1 and self.__is_remote_controlling:
-
-                self.__input_pose['position'][
-                    0] = self.__target_grasped['position'][0] - 0.2
-                self.__input_pose['position'][1] = self.__target_grasped[
-                    'position'][1]
-                self.__input_pose['position'][
-                    2] = self.__target_grasped['position'][2] + 0.03
-
+            # If the remote operator is controlling it, after the object is grasped,
+            # move arm out of the shelf and up
+            # elif self.__state == 2 and self.__has_grasped == 1 and self.__is_remote_controlling:
             elif self.__state == 3:
 
-                if self.__move_medicine_bool and self.__move_to in [2, 3]:
+                self.__input_pose['position'][0] = self.__target_grasped['position'][0] - 0.2
+                self.__input_pose['position'][1] = self.__target_grasped['position'][1]
+                self.__input_pose['position'][2] = self.__target_grasped['position'][2] + 0.03
 
-                    if self.__move_to == 3:
-                        self.__input_pose['position'][0] = self.__tray_pose[
-                            'position'][0]
-                        self.__input_pose['position'][
-                            1] = message.position.y - 0.08
-                        self.__input_pose['position'][
-                            2] = self.__tray_pose['position'][2] - 0.12
+            elif self.__state == 4:
 
-                    elif self.__move_to == 2:
-                        self.__input_pose['position'][
-                            0] = message.position.x - 0.08
-                        self.__input_pose['position'][1] = message.position.y
-                        self.__input_pose['position'][
-                            2] = message.position.z + 0.05
+                if self.__move_to == 3:
+                    self.__input_pose['position'][0] = self.__tray_pose['position'][0]
+                    self.__input_pose['position'][1] = message.position.y - 0.08
+                    self.__input_pose['position'][2] = self.__tray_pose['position'][2] - 0.12
 
-                        self.__target_moved['position'] = self.__input_pose[
-                            'position'].copy()
+                # If the placing location is selected on the screen by the operator
+                elif self.__move_to == 2:
+                    self.__input_pose['position'][0] = message.position.x - 0.08
+                    self.__input_pose['position'][1] = message.position.y
+                    self.__input_pose['position'][2] = message.position.z + 0.05
 
-                else:
+                    self.__target_moved['position'] = self.__input_pose['position'].copy()
+
+                elif self.__move_to == 1:
+                    # Place it in the bin
                     if self.__counter is not None:
 
-                        if self.__counter == 0 or self.__on_startup:
+                        if self.__counter == 0:
 
-                            self.__tray_pose['position'][
-                                0] = message.position.x - 0.15
-                            self.__tray_pose['position'][
-                                1] = message.position.y - 0.35
-                            self.__tray_pose['position'][
-                                2] = message.position.z - 0.15
+                            self.__tray_pose['position'][0] = message.position.x - 0.15
+                            self.__tray_pose['position'][1] = message.position.y - 0.35
+                            self.__tray_pose['position'][2] = message.position.z - 0.15
 
-                            self.__input_pose['position'] = self.__tray_pose[
-                                'position'].copy()
-
-                            self.__on_startup = False
+                            self.__input_pose['position'] = self.__tray_pose['position'].copy()
 
                         else:
                             row_width = 0.07  # Width between medicines in a row
@@ -354,28 +332,33 @@ class KinovaTeleoperation:
 
                             # Update the position based on row and column
 
-                            self.__input_pose['position'][0] = self.__tray_pose[
-                                'position'][0] - (row * row_height)
-                            self.__input_pose['position'][1] = self.__tray_pose[
-                                'position'][1] + (col * row_width)
-                            self.__input_pose['position'][2] = self.__tray_pose[
-                                'position'][2]
+                            self.__input_pose['position'][0] = self.__tray_pose['position'][0] - (row * row_height)
+                            self.__input_pose['position'][1] = self.__tray_pose['position'][1] + (col * row_width)
+                            self.__input_pose['position'][2] = self.__tray_pose['position'][2]
 
-                if self.__compensate_height:
-                    self.__input_pose['position'][2] += 0.24
-
+            # If the option was "Move here", after the object was placed in the position selected on the screen,
+            # move it out of the shelves
             elif self.__state == 4 and self.__is_remote_controlling and self.__move_to == 2:
-                self.__input_pose['position'][
-                    0] = self.__target_moved['position'][0] - 0.15
-                self.__input_pose['position'][1] = self.__target_moved[
-                    'position'][1]
-                self.__input_pose['position'][2] = self.__target_moved[
-                    'position'][2]
+                self.__input_pose['position'][0] = self.__target_moved['position'][0] - 0.15
+                self.__input_pose['position'][1] = self.__target_moved['position'][1]
+                self.__input_pose['position'][2] = self.__target_moved['position'][2]
 
+        # Don't move the robot, current end effector position
         else:
             self.__input_pose['position'][0] = self.tool_frame_position[0]
             self.__input_pose['position'][1] = self.tool_frame_position[1]
             self.__input_pose['position'][2] = self.tool_frame_position[2]
+
+        pose_message = Pose()
+        pose_message.position.x = self.__input_pose['position'][0]
+        pose_message.position.y = self.__input_pose['position'][1]
+        pose_message.position.z = self.__input_pose['position'][2]
+
+        pose_message.orientation.w = self.__input_pose['orientation'][0]
+        pose_message.orientation.x = self.__input_pose['orientation'][1]
+        pose_message.orientation.y = self.__input_pose['orientation'][2]
+        pose_message.orientation.z = self.__input_pose['orientation'][3]
+        self.__kinova_pose.publish()
 
         self.task_state_machine()
 
@@ -400,17 +383,6 @@ class KinovaTeleoperation:
 
         return True
 
-    def __update_state(self, request):
-
-        self.__gripper_force_grasping(0.0)
-
-        if self.__state == 4:
-            self.__state = 0
-        else:
-            self.__state += 1
-
-        return []
-
     def __move_medicine(self, request):
 
         self.__move_to = request.state
@@ -419,31 +391,16 @@ class KinovaTeleoperation:
 
         return True
 
-    def tracking_state(self, request):
+    def __update_task_state(self, request):
 
-        self.__pose_tracking = request
-
-        return True
+        self.__update_state = True
+        return []
 
     def __toolframe_transform_callback(self, message):
 
         self.tool_frame_position[0] = message.position.x
         self.tool_frame_position[1] = message.position.y
         self.tool_frame_position[2] = message.position.z
-
-    def __commanded_pose_callback(self, message):
-        """
-        
-        """
-
-        self.last_relaxed_ik_pose['position'][0] = message.position.x
-        self.last_relaxed_ik_pose['position'][1] = message.position.y
-        self.last_relaxed_ik_pose['position'][2] = message.position.z
-
-        self.last_relaxed_ik_pose['orientation'][0] = message.orientation.w
-        self.last_relaxed_ik_pose['orientation'][1] = message.orientation.x
-        self.last_relaxed_ik_pose['orientation'][2] = message.orientation.y
-        self.last_relaxed_ik_pose['orientation'][3] = message.orientation.z
 
     # # Private methods:
     def __check_initialization(self):
@@ -517,23 +474,127 @@ class KinovaTeleoperation:
 
         self.__node_is_initialized.publish(self.__is_initialized)
 
-    def __calculate_compensation(self):
-        """Calculates the compensation for coordinate systems misalignment.
-        
-        """
+    def task_state_machine(self):
 
-        self.input_relaxed_ik_difference['position'] = (
-            self.tool_frame_position - self.last_relaxed_ik_pose['position']
-        )
+        self.__previous_state = self.__state
 
-        self.input_relaxed_ik_difference['orientation'] = (
-            transformations.quaternion_multiply(
-                transformations.quaternion_inverse(
-                    self.__input_pose['orientation']
-                ),
-                self.last_relaxed_ik_pose['orientation'],
-            )
-        )
+        if self.__state == 0:
+            
+            # I can only do it in state 5 so the service is not called constantly
+            # self.__pose_tracking = False
+            # self.__start_tracking(self.__pose_tracking)
+
+            if self.__new_target_received and not self.__rh_help:
+
+                self.__update_chest_service()
+
+                if self.__previous_state == 4:
+                    self.__state = 4
+
+                else:
+                    self.__gripper_position(0.0)
+                    self.__state = 1
+
+                self.__pose_tracking = True
+                self.__start_tracking(self.__pose_tracking)
+
+                self.__new_target_received = False
+
+        # Grasping
+        elif self.__state == 1 and self.__update_state:
+
+            # Close gripper
+            self.__gripper_force_grasping(0.0)
+            self.__state = 2
+
+            self.__update_state = False
+
+        # Grasp
+        elif self.__state == 2:
+
+            # If it grasped
+            if self.__has_grasped == 1:
+
+                rospy.sleep(1)
+
+                if not self.__is_remote_controlling:
+                    self.__state = 3
+
+                else:
+                    if self.__move_medicine_bool:
+                        self.__state = 3
+
+            # If it didn't grasp
+            elif self.__has_grasped == 2:
+
+                self.__gripper_position(0.0)
+                rospy.sleep(1)
+
+                self.__new_target_received = True
+                self.__state = 0
+
+        # Move grasped object up and out of the shelves
+        elif self.__state == 3 and self.__update_state:
+            
+            ## TO DO: CHANGE INPUT_POSE VALUE
+            self.__update_chest_service()
+            self.__state = 4
+            self.__update_state = False
+
+        # Placing
+        elif self.__state == 4 and self.__update_state:
+            
+            
+            self.__state = 5
+            self.__update_state = False
+
+        # Place
+        elif self.__state == 5:
+
+            # Open gripper
+            self.__gripper_position(0.0)
+
+            # if self.__move_to in [1, 2, 3]:
+
+            #     self.__rh_help = True
+            #     self.__move_medicine_bool = False
+
+            #     if self.__move_to == 1:
+            #         self.__update_target_service(True)
+            #         self.__is_remote_controlling = False
+
+            #         self.__move_to = 0
+            #         self.__state = 0
+            #         self.__pose_tracking = False
+            #         self.__start_tracking(self.__pose_tracking)
+
+            #     elif self.__move_to in [2, 3]:
+            #         self.__state = 0
+            #         self.__pose_tracking = False
+            #         self.__start_tracking(self.__pose_tracking)
+
+            # else:
+            #     self.__update_target_service(True)
+            #     self.__move_to = 0
+            #     self.__state = 0
+            #     self.__pose_tracking = False
+            #     self.__start_tracking(self.__pose_tracking)
+
+            self.__move_medicine_bool = False
+
+            if self.__move_to == 1:
+                self.__update_target_service(True)
+                self.__is_remote_controlling = False
+
+            self.__move_to = 1
+            self.__state = 0
+            self.__pose_tracking = False
+            self.__start_tracking(self.__pose_tracking)
+
+
+        pick_and_place_state = Int32()
+        pick_and_place_state.data = self.__state
+        self.__robot_pick_and_place.publish(pick_and_place_state)
 
     # # Public methods:
     def main_loop(self):
@@ -552,457 +613,6 @@ class KinovaTeleoperation:
 
         if not self.__is_initialized:
             return
-
-        if (self.__last_pose_tracking != self.__pose_tracking):
-            self.__calculate_compensation()
-
-        self.__last_pose_tracking = self.__pose_tracking
-
-        compensated_input_pose = {
-            'position': np.array([0.0, 0.0, 0.0]),
-            'orientation': np.array([1.0, 0.0, 0.0, 0.0]),
-        }
-
-        compensated_input_pose['position'] = (
-            self.__input_pose['position']
-            - self.input_relaxed_ik_difference['position']
-        )
-
-        self.target_relaxed_ik = compensated_input_pose['position']
-
-        # Protection against too big positional input changes.
-        # Controller loses connection, out-of-sight, goes into a sleep mode etc.
-        input_position_difference = np.linalg.norm(
-            compensated_input_pose['position']
-            - self.last_relaxed_ik_pose['position']
-        )
-
-        # if (input_position_difference > self.MAXIMUM_INPUT_CHANGE):
-
-        #     # Stop tracking.
-        #     self.__tracking_state_machine_state = 0
-        #     self.__pose_tracking = False
-
-        #     rospy.logerr(
-        #         (
-        #             f'/{self.ROBOT_NAME}/teleoperation: '
-        #             f'\nChange in input position exceeded maximum allowed value! '
-        #             f'\n- Current input: {np.round(compensated_input_pose["position"], 3)}'
-        #             f'\n- Previous input: {np.round(self.last_relaxed_ik_pose["position"], 3)}'
-        #             f'\n- Difference (absolute): {np.round(input_position_difference, 3)}'
-        #             f'\n- Allowed difference threshold: {np.round(self.MAXIMUM_INPUT_CHANGE, 3)}'
-        #             '\nStopped input tracking.'
-        #         ),
-        #     )
-
-        #     return
-
-        # Use fixed (last commanded) orientation.
-        compensated_input_pose['orientation'] = (
-            self.last_relaxed_ik_pose['orientation']
-        )
-
-        # Use oculus orientation.
-        if self.__control_mode == 'full':
-            compensated_input_pose['orientation'] = (
-                self.__input_pose['orientation']
-            )
-
-            if self.COMPENSATE_ORIENTATION:
-                compensated_input_pose['orientation'] = (
-                    transformations.quaternion_multiply(
-                        self.__input_pose['orientation'],
-                        self.input_relaxed_ik_difference['orientation'],
-                    )
-                )
-
-            else:
-                # # Convenience orientation corrections:
-                compensated_input_pose['orientation'] = (
-                    transformations.quaternion_multiply(
-                        compensated_input_pose['orientation'],
-                        transformations.quaternion_about_axis(
-                            np.deg2rad(self.CONVENIENCE_COMPENSATION[1]),
-                            (0, 1, 0),  # Around Y.
-                        ),
-                    )
-                )
-                compensated_input_pose['orientation'] = (
-                    transformations.quaternion_multiply(
-                        compensated_input_pose['orientation'],
-                        transformations.quaternion_about_axis(
-                            np.deg2rad(self.CONVENIENCE_COMPENSATION[2]),
-                            (0, 0, 1),  # Around Z.
-                        ),
-                    )
-                )
-                compensated_input_pose['orientation'] = (
-                    transformations.quaternion_multiply(
-                        compensated_input_pose['orientation'],
-                        transformations.quaternion_about_axis(
-                            np.deg2rad(self.CONVENIENCE_COMPENSATION[0]),
-                            (1, 0, 0),  # Around X.
-                        ),
-                    )
-                )
-
-        waypoints = self.generate_waypoints(
-            self.last_relaxed_ik_pose['position'],
-            compensated_input_pose['position'],
-            max_distance=0.1
-        )
-
-        for waypoint in waypoints:
-
-            pose_message = Pose()
-            pose_message.position.x = waypoint[0]
-            pose_message.position.y = waypoint[1]
-            pose_message.position.z = waypoint[2]
-
-            pose_message.orientation.w = compensated_input_pose['orientation'][0
-                                                                              ]
-            pose_message.orientation.x = compensated_input_pose['orientation'][1
-                                                                              ]
-            pose_message.orientation.y = compensated_input_pose['orientation'][2
-                                                                              ]
-            pose_message.orientation.z = compensated_input_pose['orientation'][3
-                                                                              ]
-
-            self.__holorobot_pose.publish(pose_message)
-            if self.__pose_tracking:
-
-                self.__kinova_pose.publish(pose_message)
-                rospy.sleep(0.05)
-
-    def generate_waypoints(self, current_pose, target_pose, max_distance=0.05):
-
-        # Check if the distance between current and target poses is greater than max_distance
-        distance = np.sqrt(
-            (current_pose[0] - target_pose[0])**2
-            + (current_pose[1] - target_pose[1])**2
-            + (current_pose[2] - target_pose[2])**2
-        )
-
-        waypoints = []
-
-        if distance > max_distance:
-
-            # Determine the number of waypoints based on the desired resolution
-            num_waypoints = int((distance / max_distance) * 10) + 1
-
-            if self.__state == 1:
-
-                if self.__counter == 0 or self.__on_startup:
-                    # Generate waypoints along Z-axis
-                    waypoints.extend(
-                        self.generate_axis_waypoints(
-                            current_pose, target_pose, num_waypoints, axis=2
-                        )
-                    )
-
-                    # Generate waypoints along Y-axis using the last commanded X position
-                    halfway_pose = waypoints[-1].copy()
-                    halfway_pose[0] += (target_pose[0] - current_pose[0]) / 2
-
-                    # Generate waypoints along X-axis
-                    waypoints.extend(
-                        self.generate_axis_waypoints(
-                            waypoints[-1], halfway_pose, num_waypoints, axis=0
-                        )
-                    )
-
-                    waypoints.extend(
-                        self.generate_axis_waypoints(
-                            waypoints[-1], target_pose, num_waypoints, axis=1
-                        )
-                    )
-
-                    waypoints.extend(
-                        self.generate_axis_waypoints(
-                            waypoints[-1], target_pose, num_waypoints, axis=0
-                        )
-                    )
-
-                else:
-                    # Generate waypoints along X-axis
-                    waypoints.extend(
-                        self.generate_axis_waypoints(
-                            current_pose, target_pose, num_waypoints, axis=2
-                        )
-                    )
-
-                    # Generate waypoints along Y-axis using the last commanded X position
-                    waypoints.extend(
-                        self.generate_axis_waypoints(
-                            waypoints[-1], target_pose, num_waypoints, axis=1
-                        )
-                    )
-
-                    # Generate waypoints along Z-axis
-                    waypoints.extend(
-                        self.generate_axis_waypoints(
-                            waypoints[-1], target_pose, num_waypoints, axis=0
-                        )
-                    )
-            else:
-
-                if self.__move_to == 2:
-
-                    # Generate waypoints along Y-axis using the last commanded X position
-                    waypoints.extend(
-                        self.generate_axis_waypoints(
-                            current_pose, target_pose, num_waypoints, axis=1
-                        )
-                    )
-
-                    # Generate waypoints along Z-axis
-                    waypoints.extend(
-                        self.generate_axis_waypoints(
-                            waypoints[-1], target_pose, num_waypoints, axis=2
-                        )
-                    )
-
-                    # Generate waypoints along X-axis
-                    waypoints.extend(
-                        self.generate_axis_waypoints(
-                            waypoints[-1], target_pose, num_waypoints, axis=0
-                        )
-                    )
-
-                else:
-                    # Generate waypoints along X-axis
-                    waypoints.extend(
-                        self.generate_axis_waypoints(
-                            current_pose, target_pose, num_waypoints, axis=0
-                        )
-                    )
-
-                    # Generate waypoints along Y-axis using the last commanded X position
-                    waypoints.extend(
-                        self.generate_axis_waypoints(
-                            waypoints[-1], target_pose, num_waypoints, axis=1
-                        )
-                    )
-
-                    # Generate waypoints along Z-axis
-                    waypoints.extend(
-                        self.generate_axis_waypoints(
-                            waypoints[-1], target_pose, num_waypoints, axis=2
-                        )
-                    )
-
-            return waypoints
-        else:
-            waypoints.append(target_pose)
-            # rospy.loginfo("No need to generate waypoints. The distance is within the threshold.")
-            return waypoints
-
-    def generate_axis_waypoints(
-        self, current_pose, target_pose, num_waypoints, axis
-    ):
-        waypoints = []
-
-        for i in range(1, num_waypoints + 1):
-            ratio = i / (num_waypoints + 1)
-            intermediate_pose = current_pose.copy()
-            intermediate_pose[
-                axis] += ratio * (target_pose[axis] - current_pose[axis])
-            waypoints.append(intermediate_pose)
-
-        return waypoints
-
-    def task_state_machine(self):
-
-        self.__previous_state = self.__state
-
-        if self.__state == 0:
-
-            self.__pose_tracking = False
-
-            if self.__new_target_received and not self.__rh_help:
-
-                self.__update_chest_service()
-                # self.__chest_position = response.response
-
-                if self.__previous_state == 3:
-                    self.__state = 3
-
-                else:
-                    self.__gripper_position(0.0)
-                    self.__state = 1
-
-                self.__pose_tracking = True
-
-                self.__new_target_received = False
-
-        # Grasping
-        elif self.__state == 1:
-
-            current_norm_value = np.linalg.norm(
-                self.tool_frame_position - self.__input_pose['position']
-            )
-
-            if current_norm_value < 0.005:
-                # Close gripper
-                self.__gripper_force_grasping(0.0)
-                self.__state = 2
-
-            # Check if the norm value is stable
-            elif current_norm_value < 0.1 and abs(
-                self.__last_norm_value - current_norm_value
-            ) < 0.01:
-
-                if self.__norm_value_stable_since is None:
-                    self.__norm_value_stable_since = time.time()
-                elif time.time() - self.__norm_value_stable_since >= 3:
-
-                    # If the value has been stable for 3 seconds, switch to state 2
-                    self.__gripper_force_grasping(0.0)
-                    self.__state = 2
-
-            else:
-                self.__norm_value_stable_since = None
-
-            self.__last_norm_value = current_norm_value
-
-        # Grasp
-        elif self.__state == 2:
-
-            if self.__has_grasped == 1:
-
-                # self.grasped = 1
-
-                rospy.sleep(1)
-
-                if not self.__is_remote_controlling:
-                    self.__state = 3
-                    self.__chest_adjusted = False
-                    self.__compensate_depth = False
-
-                else:
-
-                    if self.__move_medicine_bool:
-
-                        self.__state = 3
-                        self.__chest_adjusted = False
-                        self.__compensate_depth = False
-
-                # if self.__chest_position == 440.0:
-
-                #     self.__compensate_height = True
-
-            elif self.__has_grasped == 2:
-
-                self.__gripper_position(0.0)
-
-                rospy.sleep(1)
-                self.__compensate_depth = True
-
-                self.__state = 0
-                self.__new_target_received = True
-
-        # Placing
-        elif self.__state == 3:
-
-            same_shelf = False
-
-            if self.__compensate_height:
-
-                if self.__move_to == 2 and abs(
-                    self.__target_grasped['position'][2]
-                    - self.__target_moved['position'][2]
-                ) < 0.10:
-
-                    current_norm_value = np.linalg.norm(
-                        self.tool_frame_position - self.__input_pose['position']
-                    )
-
-                    same_shelf = True
-                else:
-
-                    current_norm_value = np.linalg.norm(
-                        self.tool_frame_position - np.array(
-                            [
-                                self.__input_pose['position'][0],
-                                self.__input_pose['position'][1],
-                                self.__input_pose['position'][2] - 0.24
-                            ]
-                        )
-                    )
-
-            else:
-                current_norm_value = np.linalg.norm(
-                    self.tool_frame_position - self.__input_pose['position']
-                )
-
-            current_norm_value_x = np.linalg.norm(
-                self.tool_frame_position[0] - self.__input_pose['position'][0]
-            )
-
-            if current_norm_value_x < 0.03 and not self.__chest_adjusted:
-
-                if not same_shelf:
-                    self.__update_chest_service()
-                    # self.__chest_position = response.response
-
-                self.__chest_adjusted = True
-
-            if current_norm_value < 0.005:
-
-                self.__state = 4
-                self.__chest_adjusted = False
-                self.__compensate_height = False
-
-            # Check if the norm value is stable
-            elif current_norm_value < 0.08 and abs(
-                self.__last_norm_value - current_norm_value
-            ) < 0.001:
-                if self.__norm_value_stable_since is None:
-                    self.__norm_value_stable_since = time.time()
-                elif time.time() - self.__norm_value_stable_since >= 3:
-
-                    self.__state = 4
-                    self.__chest_adjusted = False
-                    self.__compensate_height = False
-
-            else:
-                self.__norm_value_stable_since = None
-
-            self.__last_norm_value = current_norm_value
-
-        # Place
-        elif self.__state == 4:
-
-            # Open gripper
-            self.__gripper_position(0.0)
-
-            current_norm_value = np.linalg.norm(
-                self.tool_frame_position - self.__input_pose['position']
-            )
-
-            if self.__move_to in [1, 2, 3]:
-
-                self.__rh_help = True
-                self.__move_medicine_bool = False
-
-                if self.__move_to == 1:
-                    self.__update_target_service(True)
-                    self.__is_remote_controlling = False
-
-                    self.__move_to = 0
-                    self.__state = 0
-
-                if self.__move_to in [2, 3] and current_norm_value < 0.08:
-                    self.__state = 0
-
-            else:
-                self.__update_target_service(True)
-                self.__move_to = 0
-                self.__state = 0
-
-        pick_and_place_state = Int32()
-        pick_and_place_state.data = self.__state
-        self.__robot_pick_and_place.publish(pick_and_place_state)
 
     def node_shutdown(self):
         """
