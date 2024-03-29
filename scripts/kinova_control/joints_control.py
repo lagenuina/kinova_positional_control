@@ -680,9 +680,11 @@ def main():
     joints_control = KinovaJointsControl(robot_name=kinova_name)
 
     rospy.on_shutdown(joints_control.node_shutdown)
+    node_rate = rospy.Rate(70)
 
     while not rospy.is_shutdown():
         joints_control.main_loop()
+        node_rate.sleep()
 
 
 if __name__ == '__main__':

@@ -96,6 +96,13 @@
         </node>
     </group> 
 
+    <node 
+    pkg="kinova_positional_control" 
+    type="motion_planner.py" 
+    name="motion_planner" 
+    output="screen">
+    </node>
+
     <group unless="$(arg freeform)">
         <node 
         pkg="holo_project" 

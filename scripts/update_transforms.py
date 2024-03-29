@@ -25,7 +25,7 @@ class UpdateTransforms:
         self.__BR = tf.TransformBroadcaster()
 
         # # Public CONSTANTS:
-        self.RATE = rospy.Rate(10)
+        self.RATE = rospy.Rate(70)
         self.ROBOT_NAME = robot_name
         self.ANCHOR_ID = anchor_id
 

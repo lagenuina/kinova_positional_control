@@ -56,7 +56,7 @@ class KinovaTeleoperation:
         self.COMPENSATE_ORIENTATION = compensate_orientation
         self.MAXIMUM_INPUT_CHANGE = maximum_input_change
         self.CONVENIENCE_COMPENSATION = convenience_compensation
-        self.RATE = rospy.Rate(5)
+        self.RATE = rospy.Rate(70)
 
         # # Private variables:
         self.__input_pose = {
@@ -93,8 +93,6 @@ class KinovaTeleoperation:
         self.__shut_down = False
         self.__new_target_received = False
         self.__rh_help = False
-
-
 
         # # Public variables:
         # Last commanded Relaxed IK pose is required to compensate controller
@@ -177,12 +175,12 @@ class KinovaTeleoperation:
             GripperPosition,
         )
         self.__start_tracking = rospy.ServiceProxy(
-            f'/{self.ROBOT_NAME}/gripper/force_grasping',
-            GripperForceGrasping,
+            f'/{self.ROBOT_NAME}/pose_tracking',
+            SetBool,
         )
         self.__update_target_service = rospy.ServiceProxy(
             '/update_target',
-            SetBool,
+            Empty,
         )
         self.__update_chest_service = rospy.ServiceProxy(
             '/chest_handler/adjust_chest',
@@ -284,23 +282,29 @@ class KinovaTeleoperation:
                 self.__input_pose['orientation'][2] = message.orientation.y
                 self.__input_pose['orientation'][3] = message.orientation.z
 
-                self.__target_grasped['position'] = self.__input_pose['position'].copy()
+                self.__target_grasped['position'] = self.__input_pose['position'
+                                                                     ].copy()
 
             # If the remote operator is controlling it, after the object is grasped,
             # move arm out of the shelf and up
             # elif self.__state == 2 and self.__has_grasped == 1 and self.__is_remote_controlling:
             elif self.__state == 3:
 
-                self.__input_pose['position'][0] = self.__target_grasped['position'][0] - 0.2
-                self.__input_pose['position'][1] = self.__target_grasped['position'][1]
-                self.__input_pose['position'][2] = self.__target_grasped['position'][2] + 0.03
+                self.__input_pose['position'][
+                    0] = self.__target_grasped['position'][0] - 0.2
+                self.__input_pose['position'][1] = self.__target_grasped[
+                    'position'][1]
+                self.__input_pose['position'][
+                    2] = self.__target_grasped['position'][2] + 0.03
 
             elif self.__state == 4:
 
                 if self.__move_to == 3:
-                    self.__input_pose['position'][0] = self.__tray_pose['position'][0]
+                    self.__input_pose['position'][0] = self.__tray_pose[
+                        'position'][0]
                     self.__input_pose['position'][1] = message.position.y - 0.08
-                    self.__input_pose['position'][2] = self.__tray_pose['position'][2] - 0.12
+                    self.__input_pose['position'][
+                        2] = self.__tray_pose['position'][2] - 0.12
 
                 # If the placing location is selected on the screen by the operator
                 elif self.__move_to == 2:
@@ -308,7 +312,8 @@ class KinovaTeleoperation:
                     self.__input_pose['position'][1] = message.position.y
                     self.__input_pose['position'][2] = message.position.z + 0.05
 
-                    self.__target_moved['position'] = self.__input_pose['position'].copy()
+                    self.__target_moved['position'] = self.__input_pose[
+                        'position'].copy()
 
                 elif self.__move_to == 1:
                     # Place it in the bin
@@ -316,11 +321,15 @@ class KinovaTeleoperation:
 
                         if self.__counter == 0:
 
-                            self.__tray_pose['position'][0] = message.position.x - 0.15
-                            self.__tray_pose['position'][1] = message.position.y - 0.35
-                            self.__tray_pose['position'][2] = message.position.z - 0.15
+                            self.__tray_pose['position'][
+                                0] = message.position.x - 0.15
+                            self.__tray_pose['position'][
+                                1] = message.position.y - 0.35
+                            self.__tray_pose['position'][
+                                2] = message.position.z - 0.15
 
-                            self.__input_pose['position'] = self.__tray_pose['position'].copy()
+                            self.__input_pose['position'] = self.__tray_pose[
+                                'position'].copy()
 
                         else:
                             row_width = 0.07  # Width between medicines in a row
@@ -332,16 +341,22 @@ class KinovaTeleoperation:
 
                             # Update the position based on row and column
 
-                            self.__input_pose['position'][0] = self.__tray_pose['position'][0] - (row * row_height)
-                            self.__input_pose['position'][1] = self.__tray_pose['position'][1] + (col * row_width)
-                            self.__input_pose['position'][2] = self.__tray_pose['position'][2]
+                            self.__input_pose['position'][0] = self.__tray_pose[
+                                'position'][0] - (row * row_height)
+                            self.__input_pose['position'][1] = self.__tray_pose[
+                                'position'][1] + (col * row_width)
+                            self.__input_pose['position'][2] = self.__tray_pose[
+                                'position'][2]
 
             # If the option was "Move here", after the object was placed in the position selected on the screen,
             # move it out of the shelves
             elif self.__state == 4 and self.__is_remote_controlling and self.__move_to == 2:
-                self.__input_pose['position'][0] = self.__target_moved['position'][0] - 0.15
-                self.__input_pose['position'][1] = self.__target_moved['position'][1]
-                self.__input_pose['position'][2] = self.__target_moved['position'][2]
+                self.__input_pose['position'][
+                    0] = self.__target_moved['position'][0] - 0.15
+                self.__input_pose['position'][1] = self.__target_moved[
+                    'position'][1]
+                self.__input_pose['position'][2] = self.__target_moved[
+                    'position'][2]
 
         # Don't move the robot, current end effector position
         else:
@@ -358,7 +373,7 @@ class KinovaTeleoperation:
         pose_message.orientation.x = self.__input_pose['orientation'][1]
         pose_message.orientation.y = self.__input_pose['orientation'][2]
         pose_message.orientation.z = self.__input_pose['orientation'][3]
-        self.__kinova_pose.publish()
+        self.__kinova_pose.publish(pose_message)
 
         self.task_state_machine()
 
@@ -393,6 +408,7 @@ class KinovaTeleoperation:
 
     def __update_task_state(self, request):
 
+        print("Update!")
         self.__update_state = True
         return []
 
@@ -401,6 +417,20 @@ class KinovaTeleoperation:
         self.tool_frame_position[0] = message.position.x
         self.tool_frame_position[1] = message.position.y
         self.tool_frame_position[2] = message.position.z
+
+    def __commanded_pose_callback(self, message):
+        """
+        
+        """
+
+        self.last_relaxed_ik_pose['position'][0] = message.position.x
+        self.last_relaxed_ik_pose['position'][1] = message.position.y
+        self.last_relaxed_ik_pose['position'][2] = message.position.z
+
+        self.last_relaxed_ik_pose['orientation'][0] = message.orientation.w
+        self.last_relaxed_ik_pose['orientation'][1] = message.orientation.x
+        self.last_relaxed_ik_pose['orientation'][2] = message.orientation.y
+        self.last_relaxed_ik_pose['orientation'][3] = message.orientation.z
 
     # # Private methods:
     def __check_initialization(self):
@@ -479,7 +509,7 @@ class KinovaTeleoperation:
         self.__previous_state = self.__state
 
         if self.__state == 0:
-            
+
             # I can only do it in state 5 so the service is not called constantly
             # self.__pose_tracking = False
             # self.__start_tracking(self.__pose_tracking)
@@ -503,6 +533,8 @@ class KinovaTeleoperation:
         # Grasping
         elif self.__state == 1 and self.__update_state:
 
+            rospy.sleep(1)
+
             # Close gripper
             self.__gripper_force_grasping(0.0)
             self.__state = 2
@@ -511,7 +543,6 @@ class KinovaTeleoperation:
 
         # Grasp
         elif self.__state == 2:
-
             # If it grasped
             if self.__has_grasped == 1:
 
@@ -530,21 +561,22 @@ class KinovaTeleoperation:
                 self.__gripper_position(0.0)
                 rospy.sleep(1)
 
-                self.__new_target_received = True
-                self.__state = 0
+                # Go back to previous state
+                self.__state = 1
+                self.__update_state = True
 
         # Move grasped object up and out of the shelves
         elif self.__state == 3 and self.__update_state:
-            
+
             ## TO DO: CHANGE INPUT_POSE VALUE
             self.__update_chest_service()
             self.__state = 4
             self.__update_state = False
+            print("Switch to state 4!")
 
         # Placing
         elif self.__state == 4 and self.__update_state:
-            
-            
+
             self.__state = 5
             self.__update_state = False
 
@@ -590,7 +622,6 @@ class KinovaTeleoperation:
             self.__state = 0
             self.__pose_tracking = False
             self.__start_tracking(self.__pose_tracking)
-
 
         pick_and_place_state = Int32()
         pick_and_place_state.data = self.__state

@@ -55,7 +55,7 @@ class KinovaPositionalControl:
 
         # # Private constants:
 
-        self.rate = rospy.Rate(5)
+        self.rate = rospy.Rate(70)
 
         self.__shut_down = False
 
