@@ -378,9 +378,6 @@ class MotionPlanner:
 
             if self.__has_reached_waypoint(waypoints, "waypoint"):
 
-                print(self.__waypoint_index, len(waypoints))
-                # print("Current target:", self.__target_pose['position'])
-
                 waypoint = waypoints[self.__waypoint_index]
 
                 compensated_input_pose = {

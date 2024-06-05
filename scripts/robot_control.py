@@ -167,11 +167,11 @@ class KinovaTeleoperation:
 
         # # Service subscriber:
         self.__gripper_force_grasping = rospy.ServiceProxy(
-            f'/{self.ROBOT_NAME}/gripper/force_grasping',
+            f'/{self.ROBOT_NAME}/gripper_control/force_grasping',
             GripperForceGrasping,
         )
         self.__gripper_position = rospy.ServiceProxy(
-            f'/{self.ROBOT_NAME}/gripper/position',
+            f'/{self.ROBOT_NAME}/gripper_control/position',
             GripperPosition,
         )
         self.__start_tracking = rospy.ServiceProxy(
@@ -225,7 +225,7 @@ class KinovaTeleoperation:
             self.__target_counter_callback,
         )
         rospy.Subscriber(
-            f'/{self.ROBOT_NAME}/grasping',
+            f'/{self.ROBOT_NAME}/gripper_control/force_grasping_status',
             Int32,
             self.__grasping_feedback_callback,
         )
@@ -258,7 +258,8 @@ class KinovaTeleoperation:
     # # Topic callbacks:
     def __grasping_feedback_callback(self, message):
 
-        self.__has_grasped = message.data
+        if message.data == 'grasped':
+            self.__has_grasped = message.data
 
     def __target_counter_callback(self, message):
 
@@ -544,7 +545,7 @@ class KinovaTeleoperation:
         # Grasp
         elif self.__state == 2:
             # If it grasped
-            if self.__has_grasped == 1:
+            if self.__has_grasped:
 
                 rospy.sleep(1)
 
@@ -556,7 +557,7 @@ class KinovaTeleoperation:
                         self.__state = 3
 
             # If it didn't grasp
-            elif self.__has_grasped == 2:
+            elif not self.__has_grasped == 2:
 
                 self.__gripper_position(0.0)
                 rospy.sleep(1)
@@ -572,7 +573,6 @@ class KinovaTeleoperation:
             self.__update_chest_service()
             self.__state = 4
             self.__update_state = False
-            print("Switch to state 4!")
 
         # Placing
         elif self.__state == 4 and self.__update_state:

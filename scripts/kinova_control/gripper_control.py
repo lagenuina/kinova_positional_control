@@ -11,7 +11,13 @@ Author (s):
 
 import rospy
 import numpy as np
-from std_msgs.msg import (Bool, Int32)
+from threading import (Timer)
+
+from std_msgs.msg import (
+    Bool,
+    Float32,
+    String,
+)
 
 from kortex_driver.msg import (
     BaseCyclic_Feedback,
@@ -44,11 +50,21 @@ class KinovaGripperControl:
         self.ROBOT_NAME = robot_name
 
         # # Private variables:
-        self.__gripper_current = 0.0
-        self.__gripper_position = None
         self.__activate_force_grasping = False
+        self.__force_grasping_stage = 'grasping'
+        self.__force_grasping_state = 0
+        self.__force_grasping_status = 'empty'
+
+        self.__delay = {
+            'timer': None,
+            'is_timer_running': False,
+            'is_finished': False,
+        }
+
         self.__target_gripper_current = 0.0
-        self.__grasped_state = False
+        self.__gripper_current_feedback = 0.0
+        self.__gripper_position_feedback = 0.0
+        self.__gripper_velocity_feedback = 0.0
 
         # # Public variables:
 
@@ -68,12 +84,12 @@ class KinovaGripperControl:
 
         # # Service provider:
         rospy.Service(
-            f'/{self.ROBOT_NAME}/gripper/position',
+            f'/{self.ROBOT_NAME}/gripper_control/position',
             GripperPosition,
             self.__gripper_position_handler,
         )
         rospy.Service(
-            f'/{self.ROBOT_NAME}/gripper/force_grasping',
+            f'/{self.ROBOT_NAME}/gripper_control/force_grasping',
             GripperForceGrasping,
             self.__gripper_force_grasping_handler,
         )
@@ -85,9 +101,24 @@ class KinovaGripperControl:
         )
 
         # # Topic publisher:
-        self.__grasped_object = rospy.Publisher(
-            f'/{self.ROBOT_NAME}/grasping',
-            Int32,
+        self.__gripper_position = rospy.Publisher(
+            f'/{self.ROBOT_NAME}/gripper_control/position_feedback',
+            Float32,
+            queue_size=1,
+        )
+        self.__gripper_velocity = rospy.Publisher(
+            f'/{self.ROBOT_NAME}/gripper_control/velocity_feedback',
+            Float32,
+            queue_size=1,
+        )
+        self.__gripper_current = rospy.Publisher(
+            f'/{self.ROBOT_NAME}/gripper_control/current_feedback',
+            Float32,
+            queue_size=1,
+        )
+        self.__force_grasping = rospy.Publisher(
+            f'/{self.ROBOT_NAME}/gripper_control/force_grasping_status',
+            String,
             queue_size=1,
         )
 
@@ -121,6 +152,8 @@ class KinovaGripperControl:
             value=gripper_position,
         )
 
+        self.__force_grasping_status = 'empty'
+
         response = True
 
         return response
@@ -131,7 +164,18 @@ class KinovaGripperControl:
         """
 
         self.__activate_force_grasping = True
-        self.__target_gripper_current = request.target_current
+
+        target_gripper_current = np.clip(
+            request.target_current,
+            a_min=0.1,
+            a_max=1.0,
+        )
+
+        self.__target_gripper_current = np.interp(
+            target_gripper_current,
+            [0.1, 1.0],
+            [0.04, 0.08],
+        ).round(3)
 
         response = True
 
@@ -153,16 +197,19 @@ class KinovaGripperControl:
                 ),
             )
 
-        self.__gripper_current = (
+        self.__gripper_current_feedback = (
             message.interconnect.oneof_tool_feedback.gripper_feedback[0].
             motor[0].current_motor
         )
 
-        self.__gripper_position = (
-            np.round(
-                message.interconnect.oneof_tool_feedback.gripper_feedback[0].
-                motor[0].position, 1
-            )
+        self.__gripper_position_feedback = (
+            message.interconnect.oneof_tool_feedback.gripper_feedback[0].
+            motor[0].position / 100
+        )
+
+        self.__gripper_velocity_feedback = (
+            message.interconnect.oneof_tool_feedback.gripper_feedback[0].
+            motor[0].velocity / 100
         )
 
     # # Private methods:
@@ -260,50 +307,99 @@ class KinovaGripperControl:
 
         self.__gripper_command(gripper_command)
 
-    def __gripper_force_grasping(self):
+    def __delay_timer(self, delay):
+        """
+          
+        """
+
+        # No timer was started yet.
+        if not self.__delay['is_timer_running']:
+
+            # Cancel any running timmers and start a new one.
+            if self.__delay['timer']:
+                self.__delay['timer'].cancel()
+
+            self.__delay['timer'] = Timer(
+                delay,
+                self.__timer_finished,
+            )
+            self.__delay['timer'].start()
+            self.__delay['is_timer_running'] = True
+            self.__delay['is_finished'] = False
+
+    def __timer_finished(self):
+        """
+
+        """
+
+        self.__delay['is_finished'] = True
+        self.__delay['is_timer_running'] = False
+
+    def __force_grasping_state_machine(self):
         """
         
         """
 
-        if self.__activate_force_grasping:
+        if not self.__activate_force_grasping:
+            self.__force_grasping_state = 0
+            self.__force_grasping_stage = 'grasping'
+            return
 
-            if self.__target_gripper_current < 0.04:
-                self.__target_gripper_current = 0.04
+        # State 0: Activate force grasping.
+        if (self.__force_grasping_state == 0):
 
-            # Close the gripper until the current raises to a value higher than
-            # 0.04, indicating contact with an object.
+            # Close the gripper using grasping velocity.
+            self.__gripper_control(
+                mode=2,
+                value=-0.08,
+            )
 
-            if (self.__gripper_current < self.__target_gripper_current):
-                # Grasping
-                self.__grasped_state = 0
+            # Timer to skip initial (motion start) current spike.
+            self.__delay_timer(delay=0.5)
 
-                # Close the gripper using a velocity command.
-                self.__gripper_control(
-                    mode=2,
-                    value=-0.08,
-                )
+            self.__force_grasping_state = 1
+
+        # State 1: Force grasping and verification.
+        elif (self.__force_grasping_state == 1 and self.__delay['is_finished']):
+            if (
+                self.__gripper_current_feedback < self.__target_gripper_current
+            ):
+                if self.__force_grasping_stage == 'verification':
+                    # Close the gripper using verification velocity.
+                    self.__gripper_control(
+                        mode=2,
+                        value=-0.02,
+                    )
 
             else:
-
                 # Stop the gripper motion.
                 self.__gripper_control(
                     mode=2,
                     value=0.0,
                 )
 
-                if self.__gripper_position < 90 and self.__gripper_position > 25:
+                # Timer before the verification stage.
+                self.__delay_timer(delay=0.5)
 
-                    # Grasped
-                    self.__grasped_state = 1
+                if self.__force_grasping_stage == 'grasping':
+                    self.__force_grasping_state = 2
+
+                elif self.__force_grasping_stage == 'verification':
+                    self.__force_grasping_stage = 'grasping'
+
+                    if self.__gripper_position_feedback < 0.97:
+                        self.__force_grasping_status = 'grasped'
+
+                    else:
+                        self.__force_grasping_status = 'failed'
+
                     self.__activate_force_grasping = False
+                    self.__force_grasping_state = 0
 
-                else:
-                    # Not grasped
-                    self.__grasped_state = 2
-
-            grasped = Int32()
-            grasped.data = self.__grasped_state
-            self.__grasped_object.publish(grasped)
+        # State 2: Waiting for the delay timer to start verification.
+        elif (self.__force_grasping_state == 2 and self.__delay['is_finished']):
+            self.__force_grasping_stage = 'verification'
+            self.__force_grasping_state = 1
 
     # # Public methods:
     def main_loop(self):
@@ -316,7 +412,12 @@ class KinovaGripperControl:
         if not self.__is_initialized:
             return
 
-        self.__gripper_force_grasping()
+        self.__force_grasping_state_machine()
+
+        self.__gripper_position.publish(self.__gripper_position_feedback)
+        self.__gripper_velocity.publish(self.__gripper_velocity_feedback)
+        self.__gripper_current.publish(self.__gripper_current_feedback)
+        self.__force_grasping.publish(self.__force_grasping_status)
 
     def node_shutdown(self):
         """
@@ -351,6 +452,11 @@ def main():
     rospy.loginfo('\n\n\n\n\n')  # Add whitespaces to separate logs.
 
     # # ROS parameters:
+    node_frequency = rospy.get_param(
+        param_name=f'{rospy.get_name()}/node_frequency',
+        default=100,
+    )
+
     kinova_name = rospy.get_param(
         param_name=f'{rospy.get_name()}/robot_name',
         default='my_gen3',
@@ -359,8 +465,7 @@ def main():
     gripper_control = KinovaGripperControl(robot_name=kinova_name)
 
     rospy.on_shutdown(gripper_control.node_shutdown)
-
-    node_rate = rospy.Rate(70)
+    node_rate = rospy.Rate(node_frequency)
 
     while not rospy.is_shutdown():
         gripper_control.main_loop()
