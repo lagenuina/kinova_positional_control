@@ -16,7 +16,7 @@ import numpy as np
 import time
 import transformations
 from ast import (literal_eval)
-from std_msgs.msg import (Bool, Int32)
+from std_msgs.msg import (Bool, Int32, String)
 from std_srvs.srv import (Empty, SetBool)
 from geometry_msgs.msg import (Pose)
 from kortex_driver.srv import (ApplyEmergencyStop, Base_ClearFaults)
@@ -85,7 +85,7 @@ class KinovaTeleoperation:
         self.__previous_state = 0
 
         self.__update_state = False
-        self.__has_grasped = False
+        self.__force_grasping_status = False
         self.__last_pose_tracking = False
         self.__pose_tracking = False
         self.__is_remote_controlling = False
@@ -226,7 +226,7 @@ class KinovaTeleoperation:
         )
         rospy.Subscriber(
             f'/{self.ROBOT_NAME}/gripper_control/force_grasping_status',
-            Int32,
+            String,
             self.__grasping_feedback_callback,
         )
         rospy.Subscriber(
@@ -258,8 +258,7 @@ class KinovaTeleoperation:
     # # Topic callbacks:
     def __grasping_feedback_callback(self, message):
 
-        if message.data == 'grasped':
-            self.__has_grasped = message.data
+        self.__force_grasping_status = message.data
 
     def __target_counter_callback(self, message):
 
@@ -409,7 +408,6 @@ class KinovaTeleoperation:
 
     def __update_task_state(self, request):
 
-        print("Update!")
         self.__update_state = True
         return []
 
@@ -544,8 +542,9 @@ class KinovaTeleoperation:
 
         # Grasp
         elif self.__state == 2:
+
             # If it grasped
-            if self.__has_grasped:
+            if self.__force_grasping_status == 'grasped':
 
                 rospy.sleep(1)
 
@@ -557,10 +556,10 @@ class KinovaTeleoperation:
                         self.__state = 3
 
             # If it didn't grasp
-            elif not self.__has_grasped == 2:
+            elif self.__force_grasping_status == 'failed':
 
                 self.__gripper_position(0.0)
-                rospy.sleep(1)
+                rospy.sleep(2)
 
                 # Go back to previous state
                 self.__state = 1

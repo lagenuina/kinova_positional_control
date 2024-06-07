@@ -14,7 +14,7 @@ import numpy as np
 import time
 import transformations
 from ast import (literal_eval)
-from std_msgs.msg import (Bool)
+from std_msgs.msg import (Bool, Float32)
 from std_srvs.srv import (Empty, SetBool)
 from geometry_msgs.msg import (Pose)
 from kortex_driver.srv import (ApplyEmergencyStop)
@@ -55,6 +55,11 @@ class MotionPlanner:
             'orientation': np.array([1.0, 0.0, 0.0, 0.0]),
         }
 
+        self.__last_tool_frame = {
+            'position': np.array([0.0, 0.0, 0.0]),
+            'orientation': np.array([1.0, 0.0, 0.0, 0.0]),
+        }
+
         self.__counter = None
         self.__last_norm_value = 0
         self.__norm_value_stable_since = None
@@ -65,8 +70,11 @@ class MotionPlanner:
         self.__target_has_changed = True
         self.__last_pose_tracking = False
         self.__pose_tracking = False
+        self.__enable_compensation = False
         self.__shut_down = False
         self.__state_updated = False
+        self.__chest_position = 0.44
+        self.__last_chest_position = 0.44
 
         # # Public variables:
         # Last commanded Relaxed IK pose is required to compensate controller
@@ -170,6 +178,16 @@ class MotionPlanner:
             Pose,
             self.__toolframe_transform_callback,
         )
+        rospy.Subscriber(
+            '/chest_logger/current_velocity',
+            Float32,
+            self.__chest_velocity_callback,
+        )
+        rospy.Subscriber(
+            '/chest_logger/current_position',
+            Float32,
+            self.__chest_position_callback,
+        )
 
     # # Dependency status callbacks:
     def __positional_control_callback(self, message):
@@ -198,6 +216,36 @@ class MotionPlanner:
         self.__tool_frame['position'][0] = message.position.x
         self.__tool_frame['position'][1] = message.position.y
         self.__tool_frame['position'][2] = message.position.z
+
+    def __chest_position_callback(self, message):
+        """
+
+        """
+
+        self.__chest_position = message.data
+
+    def __chest_velocity_callback(self, message):
+        """
+
+        """
+
+        self.__chest_velocity = message.data
+
+        if self.__chest_velocity != 0.0:
+            if not self.__enable_compensation:
+                self.__last_tool_frame['position'] = self.__tool_frame[
+                    'position'].copy()
+
+                self.__last_chest_position = self.__chest_position
+
+                self.__enable_compensation = True
+
+        else:
+            if self.__enable_compensation:
+                self.__calculate_compensation()
+
+                self.__target_has_changed = True
+                self.__enable_compensation = False
 
     def __target_pose_callback(self, message):
         """
@@ -331,18 +379,18 @@ class MotionPlanner:
             )
         )
 
+        self.__last_chest_position = self.__chest_position
+
     def __has_reached_waypoint(self, waypoints, type):
 
         if type == "target":
             norm = np.linalg.norm(
                 self.__tool_frame['position'] - self.__target_pose['position']
             )
-            print(norm)
         else:
             norm = np.linalg.norm(
                 self.__tool_frame['position'] - waypoints[self.__waypoint_index]
             )
-            print(norm)
 
         if self.__check_if_stuck(norm) or norm < 0.03:
             return True
@@ -372,46 +420,16 @@ class MotionPlanner:
         return has_arm_stopped
 
     def __move_to_next_waypoint(self, waypoints):
-        # print(len(waypoints), self.__target_has_changed)
 
         if self.__waypoint_index < len(waypoints):
+            # print(self.__waypoint_index, len(waypoints))
 
             if self.__has_reached_waypoint(waypoints, "waypoint"):
 
                 waypoint = waypoints[self.__waypoint_index]
+                print(self.__waypoint_index, len(waypoints))
 
-                compensated_input_pose = {
-                    'position': np.array([0.0, 0.0, 0.0]),
-                    'orientation': np.array([1.0, 0.0, 0.0, 0.0]),
-                }
-
-                compensated_input_pose['position'] = (
-                    waypoint - self.input_relaxed_ik_difference['position']
-                )
-
-                # Use fixed (last commanded) orientation.
-                compensated_input_pose['orientation'] = (
-                    self.last_relaxed_ik_pose['orientation']
-                )
-
-                pose_message = Pose()
-                pose_message.position.x = compensated_input_pose['position'][0]
-                pose_message.position.y = compensated_input_pose['position'][1]
-                pose_message.position.z = compensated_input_pose['position'][2]
-
-                pose_message.orientation.w = compensated_input_pose[
-                    'orientation'][0]
-                pose_message.orientation.x = compensated_input_pose[
-                    'orientation'][1]
-                pose_message.orientation.y = compensated_input_pose[
-                    'orientation'][2]
-                pose_message.orientation.z = compensated_input_pose[
-                    'orientation'][3]
-
-                # self.__holorobot_pose.publish(pose_message)
-                self.__kinova_pose.publish(pose_message)
-                # rospy.sleep(0.05)
-
+                self.__command_pose(waypoint)
                 self.__waypoint_index += 1
 
         elif self.__waypoint_index == len(waypoints):
@@ -419,8 +437,37 @@ class MotionPlanner:
             if self.__has_reached_waypoint(
                 waypoints, "target"
             ) and not self.__state_updated:
+
                 self.__update_task_state()
                 self.__state_updated = True
+
+    def __command_pose(self, desired_pose):
+
+        compensated_input_pose = {
+            'position': np.array([0.0, 0.0, 0.0]),
+            'orientation': np.array([1.0, 0.0, 0.0, 0.0]),
+        }
+
+        compensated_input_pose['position'] = (
+            desired_pose - self.input_relaxed_ik_difference['position']
+        )
+
+        # Use fixed (last commanded) orientation.
+        compensated_input_pose['orientation'] = (
+            self.last_relaxed_ik_pose['orientation']
+        )
+
+        pose_message = Pose()
+        pose_message.position.x = compensated_input_pose['position'][0]
+        pose_message.position.y = compensated_input_pose['position'][1]
+        pose_message.position.z = compensated_input_pose['position'][2]
+
+        pose_message.orientation.w = compensated_input_pose['orientation'][0]
+        pose_message.orientation.x = compensated_input_pose['orientation'][1]
+        pose_message.orientation.y = compensated_input_pose['orientation'][2]
+        pose_message.orientation.z = compensated_input_pose['orientation'][3]
+
+        self.__kinova_pose.publish(pose_message)
 
     # # Public methods:
     def main_loop(self):
@@ -447,11 +494,11 @@ class MotionPlanner:
 
         if self.__target_has_changed:
 
-            # Generate new waypoints
             self.__waypoints = self.generate_waypoints(
                 self.__tool_frame['position'],
                 self.__target_pose['position'],
-                max_distance=0.1
+                max_distance=0.1,
+                waypoints_number=30
             )
 
             # Reset waypoint index and target flag
@@ -459,8 +506,17 @@ class MotionPlanner:
             self.__target_has_changed = False
 
         if self.__pose_tracking:
-            # self.__check_norm_value()
-            self.__move_to_next_waypoint(self.__waypoints)
+
+            if self.__enable_compensation:
+                chest_delta = self.__last_chest_position - self.__chest_position
+
+                compensated_pose = self.__last_tool_frame['position'].copy()
+                compensated_pose[2] += chest_delta
+
+                self.__command_pose(compensated_pose)
+
+            else:
+                self.__move_to_next_waypoint(self.__waypoints)
 
     def get_axis_order(self):
 
@@ -472,7 +528,13 @@ class MotionPlanner:
             else:
                 return [0, 1, 2]
 
-    def generate_waypoints(self, current_pose, target_pose, max_distance=0.05):
+    def generate_waypoints(
+        self,
+        current_pose,
+        target_pose,
+        max_distance=0.05,
+        waypoints_number=30
+    ):
 
         # Check if the distance between current and target poses is greater than max_distance
         distance = np.sqrt(
@@ -486,8 +548,9 @@ class MotionPlanner:
         if distance > max_distance:
 
             # Determine the number of waypoints based on the desired resolution
-            # num_waypoints = int((distance / max_distance) * 10) + 1
-            num_waypoints = int((distance / max_distance) * 30) + 1
+            num_waypoints = int(
+                (distance / max_distance) * waypoints_number
+            ) + 1
 
             axis_order = self.get_axis_order()
 
