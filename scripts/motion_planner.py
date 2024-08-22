@@ -14,7 +14,7 @@ import numpy as np
 import time
 import transformations
 from ast import (literal_eval)
-from std_msgs.msg import (Bool, Float32)
+from std_msgs.msg import (Bool, Float32, Int32)
 from std_srvs.srv import (Empty, SetBool)
 from geometry_msgs.msg import (Pose)
 from kortex_driver.srv import (ApplyEmergencyStop)
@@ -42,7 +42,7 @@ class MotionPlanner:
         self.COMPENSATE_ORIENTATION = compensate_orientation
         self.MAXIMUM_INPUT_CHANGE = maximum_input_change
         self.CONVENIENCE_COMPENSATION = convenience_compensation
-        self.RATE = rospy.Rate(70)
+        self.RATE = rospy.Rate(100)
 
         # # Private variables:
         self.__input_pose = {
@@ -60,7 +60,6 @@ class MotionPlanner:
             'orientation': np.array([1.0, 0.0, 0.0, 0.0]),
         }
 
-        self.__counter = None
         self.__last_norm_value = 0
         self.__norm_value_stable_since = None
         self.__move_to = 1
@@ -188,6 +187,11 @@ class MotionPlanner:
             Float32,
             self.__chest_position_callback,
         )
+        rospy.Subscriber(
+            f'/{self.ROBOT_NAME}/robot_control/current_task_state',
+            Int32,
+            self.__current_task_state_callback,
+        )
 
     # # Dependency status callbacks:
     def __positional_control_callback(self, message):
@@ -242,10 +246,15 @@ class MotionPlanner:
 
         else:
             if self.__enable_compensation:
-                self.__calculate_compensation()
 
                 self.__target_has_changed = True
+                # self.__calculate_compensation()
+
                 self.__enable_compensation = False
+
+    def __current_task_state_callback(self, message):
+
+        self.__state = message.data
 
     def __target_pose_callback(self, message):
         """
@@ -265,7 +274,8 @@ class MotionPlanner:
             self.__input_pose['position'] - self.__target_pose['position']
         )
 
-        if position_difference > 0.03:
+        if position_difference > 0.10:
+
             self.__target_pose['position'] = self.__input_pose['position'].copy(
             )
             self.__target_pose['orientation'] = self.__input_pose['orientation'
@@ -422,12 +432,10 @@ class MotionPlanner:
     def __move_to_next_waypoint(self, waypoints):
 
         if self.__waypoint_index < len(waypoints):
-            # print(self.__waypoint_index, len(waypoints))
 
             if self.__has_reached_waypoint(waypoints, "waypoint"):
 
                 waypoint = waypoints[self.__waypoint_index]
-                print(self.__waypoint_index, len(waypoints))
 
                 self.__command_pose(waypoint)
                 self.__waypoint_index += 1
@@ -438,6 +446,7 @@ class MotionPlanner:
                 waypoints, "target"
             ) and not self.__state_updated:
 
+                rospy.sleep(0.3)
                 self.__update_task_state()
                 self.__state_updated = True
 
@@ -494,11 +503,13 @@ class MotionPlanner:
 
         if self.__target_has_changed:
 
+            self.__calculate_compensation()
+
             self.__waypoints = self.generate_waypoints(
                 self.__tool_frame['position'],
                 self.__target_pose['position'],
                 max_distance=0.1,
-                waypoints_number=30
+                waypoints_number=45
             )
 
             # Reset waypoint index and target flag
@@ -554,47 +565,16 @@ class MotionPlanner:
 
             axis_order = self.get_axis_order()
 
-            if self.__state == 1 and self.__counter == 0:
-                # Generate waypoints along Z-axis
-                waypoints.extend(
-                    self.generate_axis_waypoints(
-                        current_pose, target_pose, num_waypoints, axis=2
-                    )
-                )
-
-                # Generate waypoints along Y-axis using the last commanded X position
-                halfway_pose = waypoints[-1].copy()
-                halfway_pose[0] += (target_pose[0] - current_pose[0]) / 2
-
-                # Generate waypoints along X-axis
-                waypoints.extend(
-                    self.generate_axis_waypoints(
-                        waypoints[-1], halfway_pose, num_waypoints, axis=0
-                    )
-                )
+            for axis in axis_order:
 
                 waypoints.extend(
                     self.generate_axis_waypoints(
-                        waypoints[-1], target_pose, num_waypoints, axis=1
+                        current_pose, target_pose, num_waypoints, axis
                     )
                 )
 
-                waypoints.extend(
-                    self.generate_axis_waypoints(
-                        waypoints[-1], target_pose, num_waypoints, axis=0
-                    )
-                )
-            else:
-
-                for axis in axis_order:
-                    waypoints.extend(
-                        self.generate_axis_waypoints(
-                            current_pose, target_pose, num_waypoints, axis
-                        )
-                    )
-
-                    if waypoints:
-                        current_pose = waypoints[-1]
+                if waypoints:
+                    current_pose = waypoints[-1]
 
             return waypoints
 

@@ -8,8 +8,7 @@ from std_msgs.msg import (
     Float32MultiArray,
 )
 from geometry_msgs.msg import (Pose, Point)
-from gopher_ros_clearcore.msg import (Position)
-from Scripts.srv import (ConvertTargetPosition)
+from Scripts.srv import (ConvertTargetPosition, SendFloat32MultiArray)
 
 
 class UpdateTransforms:
@@ -25,9 +24,9 @@ class UpdateTransforms:
         self.__BR = tf.TransformBroadcaster()
 
         # # Public CONSTANTS:
-        self.RATE = rospy.Rate(70)
+        self.RATE = rospy.Rate(50)
         self.ROBOT_NAME = robot_name
-        self.ANCHOR_ID = anchor_id
+        self.ANCHOR_ID = str(anchor_id)
 
         # # Private variables:
         self.__anchor_frame = self.ANCHOR_ID
@@ -37,6 +36,11 @@ class UpdateTransforms:
         self.__calibrated_anchor_pos = [0, 0, 0]
 
         self.__tf_from_camera_to_object = [0, 0, 0]
+
+        self.__tf_from_odom_to_anchor = {
+            'position': np.array([0.0, 0.0, 0.0]),
+            'orientation': np.array([0.0, 0.0, 0.0, 1.0]),
+        }
 
         self.__tf_from_anchor_to_toolframe = {
             'position': np.array([0.0, 0.0, 0.0]),
@@ -68,6 +72,11 @@ class UpdateTransforms:
             'orientation': np.array([1.0, 0.0, 0.0, 0.0]),
         }
 
+        self.__tf_from_odom_to_camera = {
+            'position': np.array([0.0, 0.0, 0.0]),
+            'orientation': np.array([1.0, 0.0, 0.0, 0.0]),
+        }
+
         # # Public variables:
 
         # # Service provider:
@@ -75,6 +84,12 @@ class UpdateTransforms:
             '/from_chest_to_anchor',
             ConvertTargetPosition,
             self.__convert_target_position,
+        )
+
+        rospy.Service(
+            '/set_anchor',
+            SendFloat32MultiArray,
+            self.__set_anchor,
         )
 
         # # Topic publisher:
@@ -96,7 +111,7 @@ class UpdateTransforms:
             queue_size=1,
         )
 
-        self.__camera_to_object_pub = rospy.Publisher(
+        self.__hologram_pose = rospy.Publisher(
             f'/{self.ROBOT_NAME}/target_hologram',
             Pose,
             queue_size=1,
@@ -133,6 +148,32 @@ class UpdateTransforms:
             self.__update_chest_callback,
         )
 
+    def __set_anchor(self, request):
+
+        anchor_pose = request.data.data
+
+        transformation_matrix = transform.quaternion_matrix(
+            [
+                self.__tf_from_odom_to_camera['orientation'][3],
+                self.__tf_from_odom_to_camera['orientation'][0],
+                self.__tf_from_odom_to_camera['orientation'][1],
+                self.__tf_from_odom_to_camera['orientation'][2]
+            ]
+        )
+        transformation_matrix[:3, 3] = self.__tf_from_odom_to_camera['position']
+
+        transformation_matrix_target = transform.quaternion_matrix([1, 0, 0, 0])
+        transformation_matrix_target[:3, 3] = anchor_pose
+
+        odom_to_anchor = np.dot(
+            transformation_matrix,
+            transformation_matrix_target,
+        )
+
+        self.__tf_from_odom_to_anchor['position'] = odom_to_anchor[:3, 3]
+
+        return True
+
     def __convert_target_position(self, request):
 
         transformation_matrix = transform.quaternion_matrix(
@@ -147,7 +188,12 @@ class UpdateTransforms:
                               3] = self.__tf_from_anchor_to_camera['position']
 
         transformation_matrix_target = transform.quaternion_matrix([1, 0, 0, 0])
+        # transformation_matrix_target = transform.quaternion_matrix(
+        #     self.__tf_from_odom_to_camera['orientation']
+        # )
         transformation_matrix_target[:3, 3] = request.fromchest.data
+
+        # print(request.fromchest.data)
 
         anchor_to_target = np.dot(
             transformation_matrix, transformation_matrix_target
@@ -190,6 +236,14 @@ class UpdateTransforms:
             )
 
         self.__BR.sendTransform(
+            self.__tf_from_odom_to_anchor['position'],
+            self.__tf_from_odom_to_camera['orientation'],
+            rospy.Time.now(),
+            self.__anchor_frame,
+            '/odom',
+        )
+
+        self.__BR.sendTransform(
             (0.02, -0.14, 0.93 + self.__chest_position),
             (0.2887332, 0.2887332, -0.6454712, 0.6454712),
             rospy.Time.now(),
@@ -205,13 +259,15 @@ class UpdateTransforms:
             '/base_link',
         )
 
-        self.__BR.sendTransform(
-            self.__tf_from_camera_to_object,
-            (0, 0, 0, 1),
-            rospy.Time.now(),
-            '/target_cam',
-            self.__anchor_frame,
-        )
+        if not self.__tf_from_camera_to_object[0] == 100:
+
+            self.__BR.sendTransform(
+                self.__tf_from_camera_to_object,
+                (0, 0, 0, 1),
+                rospy.Time.now(),
+                '/target_cam',
+                self.__anchor_frame,
+            )
 
     def __listen_to_transformations(self):
 
@@ -230,14 +286,18 @@ class UpdateTransforms:
                 self.__tf_from_mobilebase_to_toolframe['position'],
                 self.__tf_from_mobilebase_to_toolframe['orientation']
             ) = self.__LISTENER.lookupTransform(
-                '/base_link', 'kortex/tool_frame', rospy.Time(0)
+                '/base_link',
+                'kortex/tool_frame',
+                rospy.Time(0),
             )
 
             (
                 self.__tf_from_anchor_to_kortexbase['position'],
                 self.__tf_from_anchor_to_kortexbase['orientation']
             ) = self.__LISTENER.lookupTransform(
-                self.__anchor_frame, 'kortex/base_link', rospy.Time(0)
+                self.__anchor_frame,
+                'kortex/base_link',
+                rospy.Time(0),
             )
 
             (
@@ -263,6 +323,15 @@ class UpdateTransforms:
             ) = self.__LISTENER.lookupTransform(
                 '/base_link',
                 '/target_cam',
+                rospy.Time(0),
+            )
+
+            (
+                self.__tf_from_odom_to_camera['position'],
+                self.__tf_from_odom_to_camera['orientation']
+            ) = self.__LISTENER.lookupTransform(
+                '/odom',
+                '/chest_cam',
                 rospy.Time(0),
             )
 
@@ -346,11 +415,12 @@ class UpdateTransforms:
             self.__tf_from_mobilebase_to_toolframe
         )
         self.__mobilebase_to_toolframe_pub.publish(base_to_toolframe)
-
         anchor_to_target = self.__compose_pose_message(
             self.__tf_from_anchor_to_object
         )
-        self.__camera_to_object_pub.publish(anchor_to_target)
+
+        if not self.__tf_from_camera_to_object[0] == 100:
+            self.__hologram_pose.publish(anchor_to_target)
 
         base_to_target = self.__compose_pose_message(
             self.__tf_from_mobilebase_to_object

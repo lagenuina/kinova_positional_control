@@ -32,7 +32,7 @@ class HoloLensMapping:
         self.ROBOT_NAME = robot_name
         self.ANCHOR_ID = anchor_id
         self.TASK = task
-        self.RATE = rospy.Rate(70)
+        self.RATE = rospy.Rate(100)
 
         # # Private variables:
         self.__input_pose = {

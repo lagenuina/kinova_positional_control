@@ -34,6 +34,19 @@
 
     <!-- ======================== END OF SETTINGS ========================== -->
     
+    <node
+    pkg="kinova_positional_control" 
+    type="update_transforms.py" 
+    name="tf_updates" 
+    output="screen">
+        <param 
+        name="anchor_id" 
+        value="$(arg anchor_id)"/>
+        <param 
+        name="robot_name" 
+        value="$(arg robot_name)"/>
+    </node>
+
     <include file="$(find gopher_ros_clearcore)/launch/hololens_chest_control.launch"/>
 
     <!-- Teleoperation module (dependency): -->
@@ -86,15 +99,6 @@
     <!-- <include 
     file="$(find kinova_positional_control)/launch/holorobot.launch">
     </include> -->
-    
-    <group if="$(arg freeform)">
-        <node 
-        pkg="holo_project" 
-        type="object_tracker.py" 
-        name="object_tracker" 
-        output="screen">
-        </node>
-    </group> 
 
     <node 
     pkg="kinova_positional_control" 
@@ -128,5 +132,17 @@
         name="task" 
         value="$(arg task)"/>
     </node>
+
+    <group if="$(arg freeform)">
+        <node 
+        pkg="holo_project" 
+        type="object_tracker.py" 
+        name="object_tracker" 
+        output="screen">
+        <param 
+            name="anchor_id" 
+            value="$(arg anchor_id)"/>
+        </node>
+    </group> 
 
 </launch>

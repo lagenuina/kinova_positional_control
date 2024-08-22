@@ -13,17 +13,15 @@ Author (s):
 
 import rospy
 import numpy as np
-import time
-import transformations
 from ast import (literal_eval)
 from std_msgs.msg import (Bool, Int32, String)
 from std_srvs.srv import (Empty, SetBool)
 from geometry_msgs.msg import (Pose)
-from kortex_driver.srv import (ApplyEmergencyStop, Base_ClearFaults)
+from kortex_driver.srv import (ApplyEmergencyStop)
 from kinova_positional_control.srv import (
     GripperForceGrasping, GripperPosition
 )
-from Scripts.srv import (UpdateState, UpdateChest)
+from Scripts.srv import (UpdateState)
 
 
 class KinovaTeleoperation:
@@ -56,7 +54,7 @@ class KinovaTeleoperation:
         self.COMPENSATE_ORIENTATION = compensate_orientation
         self.MAXIMUM_INPUT_CHANGE = maximum_input_change
         self.CONVENIENCE_COMPENSATION = convenience_compensation
-        self.RATE = rospy.Rate(70)
+        self.RATE = rospy.Rate(100)
 
         # # Private variables:
         self.__input_pose = {
@@ -86,7 +84,6 @@ class KinovaTeleoperation:
 
         self.__update_state = False
         self.__force_grasping_status = False
-        self.__last_pose_tracking = False
         self.__pose_tracking = False
         self.__is_remote_controlling = False
         self.__move_medicine_bool = False
@@ -207,8 +204,8 @@ class KinovaTeleoperation:
             Pose,
             queue_size=1,
         )
-        self.__robot_pick_and_place = rospy.Publisher(
-            f'/{self.ROBOT_NAME}/pick_and_place',
+        self.__task_state = rospy.Publisher(
+            f'/{self.ROBOT_NAME}/robot_control/current_task_state',
             Int32,
             queue_size=1,
         )
@@ -220,7 +217,7 @@ class KinovaTeleoperation:
             self.__input_pose_callback,
         )
         rospy.Subscriber(
-            '/target_counter',
+            '/task_manager/target_counter',
             Int32,
             self.__target_counter_callback,
         )
@@ -269,11 +266,13 @@ class KinovaTeleoperation:
 
         """
 
+        self.task_state_machine()
+
         if self.__pose_tracking:
 
             if self.__state == 1:
                 # Detected target
-                self.__input_pose['position'][0] = message.position.x + 0.02
+                self.__input_pose['position'][0] = message.position.x
                 self.__input_pose['position'][1] = message.position.y
                 self.__input_pose['position'][2] = message.position.z + 0.02
 
@@ -295,7 +294,7 @@ class KinovaTeleoperation:
                 self.__input_pose['position'][1] = self.__target_grasped[
                     'position'][1]
                 self.__input_pose['position'][
-                    2] = self.__target_grasped['position'][2] + 0.03
+                    2] = self.__target_grasped['position'][2] + 0.07
 
             elif self.__state == 4:
 
@@ -308,7 +307,7 @@ class KinovaTeleoperation:
 
                 # If the placing location is selected on the screen by the operator
                 elif self.__move_to == 2:
-                    self.__input_pose['position'][0] = message.position.x - 0.08
+                    self.__input_pose['position'][0] = message.position.x - 0.04
                     self.__input_pose['position'][1] = message.position.y
                     self.__input_pose['position'][2] = message.position.z + 0.05
 
@@ -358,6 +357,14 @@ class KinovaTeleoperation:
                 self.__input_pose['position'][2] = self.__target_moved[
                     'position'][2]
 
+            elif self.__state == 6:
+                self.__input_pose['position'][
+                    0] = self.__target_moved['position'][0] - 0.2
+                self.__input_pose['position'][1] = self.__target_moved[
+                    'position'][1]
+                self.__input_pose['position'][
+                    2] = self.__target_moved['position'][2] + 0.07
+
         # Don't move the robot, current end effector position
         else:
             self.__input_pose['position'][0] = self.tool_frame_position[0]
@@ -375,13 +382,11 @@ class KinovaTeleoperation:
         pose_message.orientation.z = self.__input_pose['orientation'][3]
         self.__kinova_pose.publish(pose_message)
 
-        self.task_state_machine()
-
     def __remote_control(self, request):
 
         self.__is_remote_controlling = request.data
 
-        return True
+        return [True, ""]
 
     def __change_state(self, request):
 
@@ -548,12 +553,14 @@ class KinovaTeleoperation:
 
                 rospy.sleep(1)
 
-                if not self.__is_remote_controlling:
-                    self.__state = 3
+                self.__state = 3
 
-                else:
-                    if self.__move_medicine_bool:
-                        self.__state = 3
+                # if not self.__is_remote_controlling:
+                #     self.__state = 3
+
+                # else:
+                #     if self.__move_medicine_bool:
+                #         self.__state = 3
 
             # If it didn't grasp
             elif self.__force_grasping_status == 'failed':
@@ -568,15 +575,31 @@ class KinovaTeleoperation:
         # Move grasped object up and out of the shelves
         elif self.__state == 3 and self.__update_state:
 
-            ## TO DO: CHANGE INPUT_POSE VALUE
-            self.__update_chest_service()
-            self.__state = 4
-            self.__update_state = False
+            if not self.__is_remote_controlling:
+                self.__state = 4
+
+                self.__update_chest_service()
+                self.__update_state = False
+
+            else:
+                if self.__move_medicine_bool:
+                    self.__state = 4
+
+                    self.__update_chest_service()
+                    self.__update_state = False
 
         # Placing
         elif self.__state == 4 and self.__update_state:
 
-            self.__state = 5
+            if self.__move_to == 2:
+                self.__gripper_position(0.0)
+
+                rospy.sleep(1)
+                self.__state = 6
+
+            else:
+                self.__state = 5
+
             self.__update_state = False
 
         # Place
@@ -585,46 +608,26 @@ class KinovaTeleoperation:
             # Open gripper
             self.__gripper_position(0.0)
 
-            # if self.__move_to in [1, 2, 3]:
-
-            #     self.__rh_help = True
-            #     self.__move_medicine_bool = False
-
-            #     if self.__move_to == 1:
-            #         self.__update_target_service(True)
-            #         self.__is_remote_controlling = False
-
-            #         self.__move_to = 0
-            #         self.__state = 0
-            #         self.__pose_tracking = False
-            #         self.__start_tracking(self.__pose_tracking)
-
-            #     elif self.__move_to in [2, 3]:
-            #         self.__state = 0
-            #         self.__pose_tracking = False
-            #         self.__start_tracking(self.__pose_tracking)
-
-            # else:
-            #     self.__update_target_service(True)
-            #     self.__move_to = 0
-            #     self.__state = 0
-            #     self.__pose_tracking = False
-            #     self.__start_tracking(self.__pose_tracking)
-
             self.__move_medicine_bool = False
 
             if self.__move_to == 1:
-                self.__update_target_service(True)
                 self.__is_remote_controlling = False
+                self.__rh_help = False
+                self.__update_target_service()
 
             self.__move_to = 1
             self.__state = 0
             self.__pose_tracking = False
             self.__start_tracking(self.__pose_tracking)
 
-        pick_and_place_state = Int32()
-        pick_and_place_state.data = self.__state
-        self.__robot_pick_and_place.publish(pick_and_place_state)
+        elif self.__state == 6 and self.__update_state:
+
+            self.__state = 5
+            self.__update_state = False
+
+        current_state = Int32()
+        current_state.data = self.__state
+        self.__task_state.publish(current_state)
 
     # # Public methods:
     def main_loop(self):

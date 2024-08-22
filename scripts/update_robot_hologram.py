@@ -22,7 +22,7 @@ class UpdateRoboHologram:
 
         self.listener = tf.TransformListener()
         self.br = tf.TransformBroadcaster()
-        self.rate = rospy.Rate(10)
+        self.rate = rospy.Rate(100)
 
         self.__goal_absolute_positions = [0, 0, 0, 0, 0, 0, 0]
 

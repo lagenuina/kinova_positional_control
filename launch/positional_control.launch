@@ -20,8 +20,12 @@
     "{'position': [0.0, 0.0, 0.0], 'orientation': [0.0, 0.0, 0.0]}"  -->
     <arg 
     name="starting_pose" 
-    default="{'position': [0.25, 0.35, -0.15], 'orientation': [0.0, 0.0, 0.0]}"/>
+    default="{'position': [0.5, 0.35, -0.15], 'orientation': [0.0, 0.0, 0.0]}"/>
 
+    <!--
+        default="{'position': [0.25, 0.35, -0.15], 'orientation': [0.0, 0.0, 0.0]}"/> 
+    -->
+    
     <!-- If any of dependency or optional subfiles should not be launched (or
     are launched separately) set corresponding argument to "false". -->
     <arg 
