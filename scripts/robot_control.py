@@ -325,7 +325,7 @@ class KinovaTeleoperation:
                             self.__tray_pose['position'][
                                 1] = message.position.y - 0.35
                             self.__tray_pose['position'][
-                                2] = message.position.z - 0.15
+                                2] = message.position.z - 0.35
 
                             self.__input_pose['position'] = self.__tray_pose[
                                 'position'].copy()
@@ -396,7 +396,7 @@ class KinovaTeleoperation:
             self.__rh_help = True
 
         elif request.state == 0:
-            self.__update_chest_service()
+            # self.__update_chest_service()
 
             self.__new_target_received = True
             self.__rh_help = False
@@ -514,13 +514,7 @@ class KinovaTeleoperation:
 
         if self.__state == 0:
 
-            # I can only do it in state 5 so the service is not called constantly
-            # self.__pose_tracking = False
-            # self.__start_tracking(self.__pose_tracking)
-
             if self.__new_target_received and not self.__rh_help:
-
-                self.__update_chest_service()
 
                 if self.__previous_state == 4:
                     self.__state = 4
@@ -530,9 +524,10 @@ class KinovaTeleoperation:
                     self.__state = 1
 
                 self.__pose_tracking = True
-                self.__start_tracking(self.__pose_tracking)
-
                 self.__new_target_received = False
+
+                self.__update_chest_service()
+                self.__start_tracking(self.__pose_tracking)
 
         # Grasping
         elif self.__state == 1 and self.__update_state:

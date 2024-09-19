@@ -74,6 +74,7 @@ class MotionPlanner:
         self.__state_updated = False
         self.__chest_position = 0.44
         self.__last_chest_position = 0.44
+        self.__on_low_shelf = False
 
         # # Public variables:
         # Last commanded Relaxed IK pose is required to compensate controller
@@ -531,13 +532,43 @@ class MotionPlanner:
 
     def get_axis_order(self):
 
-        if self.__state == 1 or self.__state == 3:
+        # print(self.__chest_position)
+        # if self.__chest_position < 0.03:
+        #     if self.__state == 1:
+        #         return [1, 2, 0]
+        #     elif self.__state == 3:
+        #         return [2, 1, 0]
+        #     else:
+        #         if self.__move_to == 2:
+        #             return [1, 2, 0]
+        #         else:
+        #             return [0, 2, 1]
+        # else:
+        #     if self.__state == 1 or self.__state == 3:
+        #         return [2, 1, 0]
+        #     else:
+        #         if self.__move_to == 2:
+        #             return [1, 2, 0]
+        #         else:
+        #             return [0, 1, 2]
+
+        if self.__state == 1:
+            if self.__chest_position < 0.03:
+                self.__on_low_shelf = True
+                return [1, 2, 0]
+            else:
+                self.__on_low_shelf = False
+                return [2, 1, 0]
+        elif self.__state == 3:
             return [2, 1, 0]
         else:
             if self.__move_to == 2:
                 return [1, 2, 0]
             else:
-                return [0, 1, 2]
+                if self.__on_low_shelf:
+                    return [0, 2, 1]
+                else:
+                    return [0, 1, 2]
 
     def generate_waypoints(
         self,
