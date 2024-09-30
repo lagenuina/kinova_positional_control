@@ -194,6 +194,12 @@ class MotionPlanner:
             self.__current_task_state_callback,
         )
 
+        rospy.Subscriber(
+            f'/{self.ROBOT_NAME}/robot_control/move_to',
+            Int32,
+            self.__move_to_callback,
+        )
+
     # # Dependency status callbacks:
     def __positional_control_callback(self, message):
         """Monitors positional_control is_initialized topic.
@@ -221,6 +227,10 @@ class MotionPlanner:
         self.__tool_frame['position'][0] = message.position.x
         self.__tool_frame['position'][1] = message.position.y
         self.__tool_frame['position'][2] = message.position.z
+
+    def __move_to_callback(self, message):
+
+        self.__move_to = message.data
 
     def __chest_position_callback(self, message):
         """
@@ -275,7 +285,7 @@ class MotionPlanner:
             self.__input_pose['position'] - self.__target_pose['position']
         )
 
-        if position_difference > 0.10:
+        if position_difference > 0.04:
 
             self.__target_pose['position'] = self.__input_pose['position'].copy(
             )
@@ -563,7 +573,8 @@ class MotionPlanner:
             return [2, 1, 0]
         else:
             if self.__move_to == 2:
-                return [1, 2, 0]
+                # return [1, 2, 0]
+                return [2, 1, 0]
             else:
                 if self.__on_low_shelf:
                     return [0, 2, 1]
