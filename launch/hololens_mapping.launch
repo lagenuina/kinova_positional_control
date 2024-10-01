@@ -19,6 +19,16 @@
 
     <!-- ======================== END OF SETTINGS ========================== -->
 
+    <node 
+    pkg="kinova_positional_control" 
+    type="update_transforms.py" 
+    name="tf_update" 
+    output="screen">
+        <param 
+        name="anchor_id" 
+        value="$(arg anchor_id)"/>
+    </node>
+    
     <!-- Teleoperation module (dependency): -->
     <include 
     file="$(find kinova_positional_control)/launch/teleoperation.launch">

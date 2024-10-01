@@ -26,7 +26,7 @@ class HoloLensMapping:
 
         # # Public constants:
         self.ROBOT_NAME = robot_name
-        self.anchor_id = anchor_id
+        self.anchor_id = str(anchor_id)
 
         self.listener = tf.TransformListener()
         self.br = tf.TransformBroadcaster()

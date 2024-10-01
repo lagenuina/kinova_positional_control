@@ -4,6 +4,57 @@
     name="anchor_id" 
     default=""/>
 
+    <arg 
+    name="serial_number_chest" 
+    default="242222071812"/>
+
+    <group ns="/chest_cam">
+        <include file="$(find realsense2_camera)/launch/rs_camera.launch">
+            <arg
+            name="serial_no"
+            value="$(arg serial_number_chest)"/>
+
+            <!-- <arg 
+            name="color_width" 
+            value="1920"/>
+
+            <arg
+            name="color_height" 
+            value="1080"/> -->
+
+            <arg name="depth_width"         default="640"/>
+            <arg name="depth_height"        default="480"/>
+            <arg name="enable_depth"        default="true"/>
+
+            <arg name="infra_width"         default="640"/>
+            <arg name="infra_height"        default="480"/>
+            <arg name="enable_infra1"       default="true"/>
+            <arg name="enable_infra2"       default="true"/>
+
+            <arg name="color_width"         default="640"/>
+            <arg name="color_height"        default="480"/>
+            <arg name="enable_color"        default="true"/>
+
+            <arg name="fisheye_fps"         default="30"/>
+            <arg name="depth_fps"           default="30"/>
+            <arg name="infra_fps"           default="30"/>
+            <arg name="color_fps"           default="30"/>
+            <arg name="gyro_fps"            default="400"/>
+            <arg name="accel_fps"           default="250"/>
+            <arg name="enable_gyro"         default="true"/>
+            <arg name="enable_accel"        default="true"/>
+
+            <arg name="enable_pointcloud"   default="false"/>
+            <arg name="enable_sync"         default="true"/>
+            <arg name="align_depth"         default="true"/>
+
+        </include>
+    </group>
+
+    <!-- See install instructions here: https://github.com/ethz-asl/image_undistort -->
+    <include file="$(find image_undistort)/launch/undistort_realsense.launch" >
+    </include>
+
     <include file="$(find ros_tcp_endpoint)/launch/endpoint.launch" />    
     
     <include 
@@ -13,8 +64,18 @@
         value="$(arg anchor_id)"/>
     </include>
 
-    <node pkg="gopher_keyboard_control" type="manual_hololens_control.py" name="base_hololens_mapping" output="screen"/>>
+    <node pkg="gopher_keyboard_control" type="manual_hololens_control.py" name="base_hololens_mapping" output="screen"/>
 
     <include file="$(find gopher_ros_clearcore)/launch/hololens_chest_control.launch"/>
+
+    <node 
+    pkg="kinova_positional_control" 
+    type="set_spatial_anchor.py" 
+    name="spatial_anchor" 
+    output="screen">
+        <param 
+        name="anchor_id" 
+        value="$(arg anchor_id)"/>
+    </node>
 
 </launch>
