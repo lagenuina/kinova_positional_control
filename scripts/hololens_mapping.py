@@ -18,7 +18,6 @@ class HoloLensMapping:
         self,
         anchor_id,
         robot_name,
-        task,
     ):
         """
         
@@ -31,7 +30,6 @@ class HoloLensMapping:
         # # Public constants:
         self.ROBOT_NAME = robot_name
         self.ANCHOR_ID = anchor_id
-        self.TASK = task
         self.RATE = rospy.Rate(100)
 
         # # Private variables:
@@ -290,15 +288,9 @@ def main():
 
     anchor_id = rospy.get_param(param_name=f'{rospy.get_name()}/anchor_id')
 
-    task = rospy.get_param(
-        param_name=f'{rospy.get_name()}/task',
-        default='study',
-    )
-
     hololens_kinova_mapping = HoloLensMapping(
         robot_name=kinova_name,
         anchor_id=anchor_id,
-        task=task,
     )
 
     rospy.on_shutdown(hololens_kinova_mapping.node_shutdown)

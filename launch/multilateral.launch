@@ -8,29 +8,46 @@
 
     <arg 
     name="anchor_id" 
-    default="431d6860-2fa7-4d18-9775-8a30c8bbc8d3"/>
+    default="9"/>
 
     <arg 
-    name="task" 
-    default="study"/>
-
-    <arg 
-    name="freeform"
+    name="study"
     default="true"/>
 
-    <!-- default="374594eb-6114-4816-82e4-ab69f9e2961b"/> -->
-
-    <!-- If any of dependency or optional subfiles should not be launched (or
-    are launched separately) set corresponding argument to "false". -->
     <arg 
-    name="launch_teleoperation" 
+    name="random"
     default="false"/>
+
     <arg 
-    name="launch_autonomous" 
-    default="true"/>
+    name="participant" 
+    default=""/>
+    
     <arg 
-    name="launch_controller_feedback"
-    default="true"/>
+    name="mode" 
+    default="0"/>
+    
+    <arg
+    name="trial" 
+    default="0"/>
+
+    <arg 
+    name="remote_capability_1" 
+    default="10.0"/>
+    <arg 
+    name="remote_capability_2" 
+    default="10.0"/>
+    <arg 
+    name="remote_capability_3" 
+    default="10.0"/>
+    <arg 
+    name="local_capability_1" 
+    default="10.0"/>
+    <arg 
+    name="local_capability_2" 
+    default="10.0"/>
+    <arg 
+    name="local_capability_3" 
+    default="10.0"/>
 
     <!-- ======================== END OF SETTINGS ========================== -->
     
@@ -49,24 +66,15 @@
 
     <include file="$(find gopher_ros_clearcore)/launch/hololens_chest_control.launch"/>
 
-    <!-- Teleoperation module (dependency): -->
-    <group if="$(arg launch_teleoperation)">
-        <include 
-        file="$(find kinova_positional_control)/launch/teleoperation.launch">
-            <arg 
-            name="robot_name" 
-            value="$(arg robot_name)"/>
-        </include>
-    </group>
-
-    <group if="$(arg launch_autonomous)">
     <include 
     file="$(find kinova_positional_control)/launch/robot_control.launch">
         <arg 
         name="robot_name" 
         value="$(arg robot_name)"/>
+        <arg 
+        name="study" 
+        value="$(arg study)"/>
     </include>
-    </group>
 
     <!-- HoloLens mapping: -->
     <group ns="/$(arg robot_name)">
@@ -81,24 +89,8 @@
             <param 
             name="anchor_id" 
             value="$(arg anchor_id)"/>
-            <param 
-            name="task" 
-            value="$(arg task)"/>
         </node>
     </group> 
-
-    <!-- Object detector -->
-    <!-- <include 
-    file="$(find holo_project)/src/launch/object_detector.launch">
-        <param 
-        name="task" 
-        value="$(arg task)"/>
-    </include> -->
-
-    <!-- Robot hologram: -->
-    <!-- <include 
-    file="$(find kinova_positional_control)/launch/holorobot.launch">
-    </include> -->
 
     <node 
     pkg="kinova_positional_control" 
@@ -106,15 +98,6 @@
     name="motion_planner" 
     output="screen">
     </node>
-
-    <group unless="$(arg freeform)">
-        <node 
-        pkg="holo_project" 
-        type="object_tracker_fixed_local.py" 
-        name="object_tracker" 
-        output="screen">
-        </node>
-    </group> 
 
     <node 
     pkg="holo_project" 
@@ -124,25 +107,97 @@
     </node>
 
     <node 
-    pkg="holo_project" 
-    type="task_manager.py" 
-    name="task_manager" 
+    pkg="holo_project"
+    type="task_manager.py"
+    name="task_manager"
     output="screen">
         <param 
-        name="task" 
-        value="$(arg task)"/>
+        name="study"
+        value="$(arg study)"/>
     </node>
 
-    <group if="$(arg freeform)">
-        <node 
-        pkg="holo_project" 
-        type="object_tracker.py" 
-        name="object_tracker" 
-        output="screen">
+    <node 
+    pkg="holo_project"
+    type="object_tracker.py"
+    name="object_tracker"
+    output="screen">
         <param 
             name="anchor_id" 
             value="$(arg anchor_id)"/>
-        </node>
+        <param
+            name="study" 
+            value="$(arg study)"/>
+    </node>
+
+    <group unless="$(arg study)">
+        <node 
+        pkg="failure_allocation" 
+        type="update_bounds.py" 
+        name="failure_allocation" 
+        output="screen"/>
+        
+        <node pkg="rqt_plot" type="rqt_plot" name="rqt_plot_remote" output="screen"
+            args="/update_bounds/remote_bound_1/data[0] 
+                    /update_bounds/remote_bound_1/data[1]
+                    /update_bounds/remote_bound_2/data[0]
+                    /update_bounds/remote_bound_2/data[1]
+                    /update_bounds/remote_bound_3/data[0]
+                    /update_bounds/remote_bound_3/data[1]" />
+
+        <node pkg="rqt_plot" type="rqt_plot" name="rqt_plot_local" output="screen"
+            args="/update_bounds/local_bound_1/data[0] 
+                    /update_bounds/local_bound_1/data[1]
+                    /update_bounds/local_bound_2/data[0]
+                    /update_bounds/local_bound_2/data[1]
+                    /update_bounds/local_bound_3/data[0]
+                    /update_bounds/local_bound_3/data[1]" />
+
     </group> 
+
+    <group if="$(arg study)">
+        <node 
+        pkg="failure_allocation" 
+        type="performance_model.py" 
+        name="failure_allocation" 
+        output="screen">
+        <param 
+        name="mode" 
+        value="$(arg mode)"/>
+        <param 
+        name="remote_capability_1" 
+        value="$(arg remote_capability_1)"/>
+        <param 
+        name="remote_capability_2" 
+        value="$(arg remote_capability_2)"/>
+        <param 
+        name="remote_capability_3" 
+        value="$(arg remote_capability_3)"/>
+        <param 
+        name="local_capability_1" 
+        value="$(arg remote_capability_1)"/>
+        <param 
+        name="local_capability_2" 
+        value="$(arg remote_capability_2)"/>
+        <param 
+        name="local_capability_3" 
+        value="$(arg remote_capability_3)"/>
+        </node>
+    </group>
+
+    <include 
+    file="$(find data_collector)/launch/data_recorder.launch">
+        <arg 
+        name="participant" 
+        value="$(arg participant)"/>
+        <arg 
+        name="mode" 
+        value="$(arg mode)"/>
+        <arg
+        name="trial" 
+        value="$(arg trial)"/>
+        <arg
+        name="study" 
+        value="$(arg study)"/>
+    </include>
 
 </launch>

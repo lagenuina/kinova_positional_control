@@ -34,6 +34,7 @@ class KinovaTeleoperation:
         compensate_orientation,
         maximum_input_change,
         convenience_compensation,
+        task,
     ):
         """
         
@@ -82,7 +83,13 @@ class KinovaTeleoperation:
         self.__state = 0
         self.__previous_state = 0
         self.__marker_id = None
-        self.__ids_grasp_failure = [8, 1]
+
+        if task:
+            self.__ids_grasp_failure = [8, 1]
+
+        else:
+            self.__ids_grasp_failure = [5]
+
         self.__increment = 0
 
         self.__update_state = False
@@ -203,6 +210,10 @@ class KinovaTeleoperation:
         )
         self.__grasp_failure_service = rospy.ServiceProxy(
             '/grasp_failure',
+            Empty,
+        )
+        self.__failure_resolved_service = rospy.ServiceProxy(
+            '/failure_resolved',
             Empty,
         )
 
@@ -350,7 +361,7 @@ class KinovaTeleoperation:
 
                     self.__set_aside(
                         message.position.y - 0.08,
-                        offset_z=-0.33,
+                        offset_z=-0.31,
                     )
 
             # If the option was "Move here", after the object was placed in the position selected on the screen,
@@ -400,7 +411,8 @@ class KinovaTeleoperation:
 
     def __remote_control(self, request):
 
-        self.__is_remote_controlling = request.data
+        if not self.__marker_id in self.__ids_grasp_failure:
+            self.__is_remote_controlling = request.data
 
         return [True, ""]
 
@@ -560,10 +572,6 @@ class KinovaTeleoperation:
         self.__input_pose['position'][
             2] = self.__tray_pose['position'][2] + offset_z
 
-        # self.__input_pose['position'][0] = self.__tray_pose['position'][0]
-        # self.__input_pose['position'][1] = self.__tray_pose['position'][1] - 0.2
-        # self.__input_pose['position'][2] = self.__tray_pose['position'][2]
-
     def __place_in_bin(self, position):
         if self.__counter == 0:
             self.__update_pose(
@@ -571,7 +579,7 @@ class KinovaTeleoperation:
             )
             self.__tray_pose['position'] = self.__input_pose['position'].copy()
         else:
-            row_width, row_height, max_per_row = 0.04, 0.04, 6
+            row_width, row_height, max_per_row = 0.04, 0.01, 6
             row, col = divmod(self.__counter, max_per_row)
             self.__adjust_position(
                 self.__tray_pose['position'],
@@ -653,7 +661,6 @@ class KinovaTeleoperation:
 
                 self.__update_chest_service()
                 self.__update_state = False
-
             else:
                 if self.__move_medicine_bool:
                     self.__state = 4
@@ -684,9 +691,16 @@ class KinovaTeleoperation:
             self.__move_medicine_bool = False
 
             if self.__move_to == 1:
+
+                if self.__is_remote_controlling or (
+                    self.__marker_id in self.__ids_grasp_failure
+                ):
+                    self.__failure_resolved_service()
+                else:
+                    self.__update_target_service()
+
                 self.__is_remote_controlling = False
                 self.__rh_help = False
-                self.__update_target_service()
 
             self.__move_to = 1
             self.__state = 0
@@ -708,6 +722,8 @@ class KinovaTeleoperation:
                 self.__update_to_grasping = False
 
                 self.__increment = 0
+
+                self.__is_remote_controlling = False
 
         current_state = Int32()
         current_state.data = self.__state
@@ -767,6 +783,11 @@ def main():
         default='my_gen3',
     )
 
+    task = rospy.get_param(
+        param_name=f'{rospy.get_name()}/study',
+        default='false',
+    )
+
     tracking_mode = rospy.get_param(
         param_name=f'{rospy.get_name()}/tracking_mode',
         default='toggle',
@@ -795,6 +816,7 @@ def main():
         compensate_orientation=compensate_orientation,
         maximum_input_change=maximum_input_change,
         convenience_compensation=convenience_compensation,
+        task=task,
     )
 
     rospy.on_shutdown(kinova_teleoperation.node_shutdown)

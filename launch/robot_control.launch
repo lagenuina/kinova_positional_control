@@ -38,6 +38,10 @@
     name="launch_positional_control" 
     default="true"/>
 
+    <arg 
+    name="study" 
+    default="true"/>
+
     <!-- ======================== END OF SETTINGS ========================== -->
 
 
@@ -74,6 +78,9 @@
             <param
             name="maximum_input_change"
             value="$(arg maximum_input_change)"/>
+            <param 
+            name="study" 
+            value="$(arg study)"/>
         </node>   
     </group>
 </launch>
