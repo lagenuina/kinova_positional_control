@@ -88,7 +88,7 @@ class KinovaTeleoperation:
             self.__ids_grasp_failure = [8, 1]
 
         else:
-            self.__ids_grasp_failure = [5]
+            self.__ids_grasp_failure = [1]
 
         self.__increment = 0
 
@@ -181,6 +181,12 @@ class KinovaTeleoperation:
             '/robot_control/grasp_command',
             Empty,
             self.__grasp_command,
+        )
+
+        rospy.Service(
+            '/robot_control/next_state',
+            Empty,
+            self.__next_state,
         )
 
         # # Service subscriber:
@@ -464,6 +470,12 @@ class KinovaTeleoperation:
         self.__update_to_grasping = True
         return []
 
+    def __next_state(self, request):
+
+        self.__update_state = True
+
+        return []
+
     def __toolframe_transform_callback(self, message):
 
         self.tool_frame_position[0] = message.position.x
@@ -649,6 +661,7 @@ class KinovaTeleoperation:
                         self.__update_state = True
 
                 else:
+                    print("Calling serviceee")
                     self.__grasp_failure_service()
                     self.__state = 7
                     self.__grasping_attempts = 0

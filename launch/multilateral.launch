@@ -32,22 +32,27 @@
 
     <arg 
     name="remote_capability_1" 
-    default="10.0"/>
+    default="[0.02, 0.22]"/>
+
     <arg 
     name="remote_capability_2" 
-    default="10.0"/>
+    default="[1.11, 1.39]"/>
+
     <arg 
     name="remote_capability_3" 
-    default="10.0"/>
+    default="[0.04, 0.25]"/>
+
     <arg 
     name="local_capability_1" 
-    default="10.0"/>
+    default="[2.79, 4.81]"/>
+
     <arg 
     name="local_capability_2" 
-    default="10.0"/>
+    default="[0.95, 1.22]"/>
+
     <arg 
     name="local_capability_3" 
-    default="10.0"/>
+    default="[2.66, 4.18]"/>
 
     <!-- ======================== END OF SETTINGS ========================== -->
     
@@ -160,27 +165,30 @@
         type="performance_model.py" 
         name="failure_allocation" 
         output="screen">
-        <param 
-        name="mode" 
-        value="$(arg mode)"/>
-        <param 
-        name="remote_capability_1" 
-        value="$(arg remote_capability_1)"/>
-        <param 
-        name="remote_capability_2" 
-        value="$(arg remote_capability_2)"/>
-        <param 
-        name="remote_capability_3" 
-        value="$(arg remote_capability_3)"/>
-        <param 
-        name="local_capability_1" 
-        value="$(arg remote_capability_1)"/>
-        <param 
-        name="local_capability_2" 
-        value="$(arg remote_capability_2)"/>
-        <param 
-        name="local_capability_3" 
-        value="$(arg remote_capability_3)"/>
+            <param 
+            name="mode" 
+            value="$(arg mode)"/>
+            <param 
+            name="participant" 
+            value="$(arg participant)"/>
+            <param 
+            name="remote_capability_1" 
+            value="$(arg remote_capability_1)"/>
+            <param 
+            name="remote_capability_2" 
+            value="$(arg remote_capability_2)"/>
+            <param 
+            name="remote_capability_3" 
+            value="$(arg remote_capability_3)"/>
+            <param 
+            name="local_capability_1" 
+            value="$(arg local_capability_1)"/>
+            <param 
+            name="local_capability_2" 
+            value="$(arg local_capability_2)"/>
+            <param 
+            name="local_capability_3" 
+            value="$(arg local_capability_3)"/>
         </node>
     </group>
 
