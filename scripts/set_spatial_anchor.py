@@ -57,11 +57,11 @@ class SpatialAnchor:
 
         if self.__image is not None:
             corners, ids, _ = self.__ARUCO_DETECTOR.detectMarkers(self.__image)
+            print(ids)
 
             if ids is not None:
 
                 for i in range(len(ids)):
-
                     if ids[i] == self.ANCHOR_ID:
 
                         rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
@@ -92,6 +92,7 @@ def main():
     node_name = rospy.get_name()
     id = rospy.get_param(param_name=f'{rospy.get_name()}/anchor_id')
     object_tracker = SpatialAnchor(node_name=node_name, anchor_id=id)
+
     while not rospy.is_shutdown():
         object_tracker.main_loop()
         object_tracker.RATE.sleep()

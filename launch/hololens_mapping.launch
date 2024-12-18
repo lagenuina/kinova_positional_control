@@ -6,10 +6,6 @@
     name="robot_name" 
     default="my_gen3"/>
 
-    <arg 
-    name="anchor_id" 
-    default=""/>
-
     <!-- If any of dependency or optional subfiles should not be launched (or
     are launched separately) set corresponding argument to "false". -->
 
@@ -24,9 +20,6 @@
     type="update_transforms.py" 
     name="tf_update" 
     output="screen">
-        <param 
-        name="anchor_id" 
-        value="$(arg anchor_id)"/>
     </node>
     
     <!-- Teleoperation module (dependency): -->
@@ -47,9 +40,6 @@
             <param 
             name="robot_name" 
             value="$(arg robot_name)"/>
-            <param 
-            name="anchor_id" 
-            value="$(arg anchor_id)"/>
         </node>
     </group> 
 

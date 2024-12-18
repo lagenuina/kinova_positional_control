@@ -4,8 +4,7 @@ import numpy as np
 import copy
 import tf
 from std_msgs.msg import (Bool)
-from geometry_msgs.msg import (Pose)
-from Scripts.srv import BoolUpdate, UpdateState
+from geometry_msgs.msg import (Pose, Point)
 
 
 class HoloLensMapping:
@@ -15,7 +14,6 @@ class HoloLensMapping:
 
     def __init__(
         self,
-        anchor_id,
         robot_name,
     ):
         """
@@ -26,7 +24,6 @@ class HoloLensMapping:
 
         # # Public constants:
         self.ROBOT_NAME = robot_name
-        self.anchor_id = str(anchor_id)
 
         self.listener = tf.TransformListener()
         self.br = tf.TransformBroadcaster()
@@ -122,7 +119,7 @@ class HoloLensMapping:
                 input_orientation,
                 rospy.Time.now(),
                 'target',
-                self.anchor_id,
+                'anchor',
             )
 
             (translation, rotation) = self.listener.lookupTransform(
@@ -281,12 +278,7 @@ def main():
         default='my_gen3',
     )
 
-    anchor_id = rospy.get_param(param_name=f'{rospy.get_name()}/anchor_id')
-
-    hololens_kinova_mapping = HoloLensMapping(
-        robot_name=kinova_name,
-        anchor_id=anchor_id,
-    )
+    hololens_kinova_mapping = HoloLensMapping(robot_name=kinova_name,)
 
     rospy.on_shutdown(hololens_kinova_mapping.node_shutdown)
 
